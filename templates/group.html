@@ -1,0 +1,15 @@
+{% extends "loggedin.html" %}
+{% block title %}Photo Submission for Group {{ name }}{% endblock %}
+{% block subtitle %}Photo Submission for Group {{ name }}{% endblock %}
+{% block content %}
+    {% if filename %}
+        {{filename}} uploaded!<br/>
+        <img src="uploads/{{filename}}">
+    {% else %}
+        <form action="" method="post" enctype="multipart/form-data">
+	        Select photo to submit: <input type="file" name="newPhoto"/>
+	        <br/>
+	        <input type="submit" value="Upload" />
+        </form>
+    {% endif %}
+{% endblock %}

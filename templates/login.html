@@ -1,0 +1,36 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+<head>
+    <title>Login - Group Photo Service</title>
+</head>
+<body>
+    <h2>Login</h2>
+    <table>
+        <tr>
+            <td valign="top">
+                <h3>Create New Group</h3>
+                <form action="." method="POST">
+                    <table>
+                        <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
+                        <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
+                        <tr><td>Group Size: </td><td><input type="text" name="groupSize" /></td></tr>
+                        <tr><td>Max Time to Agree: </td><td><input type="text"  name="timeout" /></td></tr>
+                        <tr><td align="center" colspan="2"><input type="submit" value="Create" name="loginType"/></td></tr>
+                    </table>
+                </form>
+            </td>
+            <td valign="top">
+                <h3>Join Existing Group</h3>
+                <form action="." method="POST">
+                    <table>
+                        <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
+                        <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
+                        <tr><td align="center" colspan="2"><input type="submit" value="Join" name="loginType"/></td></tr>
+                    </table>
+                </form>
+
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

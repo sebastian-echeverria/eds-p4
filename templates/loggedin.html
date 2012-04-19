@@ -1,0 +1,14 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+<head>
+    <title>{% block title %}{% endblock %} - Group Photo Service</title>
+</head>
+<body>
+    {% if session['username'] %}
+        <h2>{% block subtitle %}{% endblock %}</h2>
+        <div id="content">{% block content %}{% endblock %}</div>
+    {% else %}
+        Please login: <a href="\">here</a>.
+    {% endif %}
+</body>
+</html>
