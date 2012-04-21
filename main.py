@@ -16,6 +16,7 @@
 # Imports
 ################################################################################################
 import os
+import logging
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session
 from werkzeug import secure_filename
 
@@ -39,10 +40,13 @@ groups = {}
 class PhotoGroup:
     def __init__(self, groupName, size, timeout):
         self.name = groupName
-        self.size = size
+        self.size = int(size)
         self.timeout = timeout
         self.memberStatus = {}
 
+    ################################################################################################
+    # Functions to change the status of a user in a group
+    ################################################################################################
     def setStatusJoined(self, userName):
         self.memberStatus[userName] = 'init'
 
@@ -53,11 +57,28 @@ class PhotoGroup:
         self.memberStatus[userName] = 'approve'
         
     def setStatusAborted(self, userName):
-        self.memberStatus[userName] = 'abort'        
-    
+        self.memberStatus[userName] = 'abort'
 
+    ################################################################################################
+    # Function to check if everybody has submitted an image
+    ################################################################################################
+    def checkAllSubmitted(self):
+        #log = logging.getLogger('werkzeug')
+        #log.warning('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
+
+        if(len(self.memberStatus.keys()) == self.size):
+            # Check if everybody has submitted
+            for status in self.memberStatus.values():
+                if status != 'submit':
+                    return False
+
+            # If everybody submitted, we are ok
+            return True
+        else:
+            return False
+    
 ################################################################################################
-# Utility function to check if a filename has an allowed extension
+# Utility functions to check if a filename has an allowed extension
 ################################################################################################
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
@@ -102,9 +123,10 @@ def login():
 ################################################################################################
 # Upload image functionality
 ################################################################################################
-@app.route('/groups/<groupName>', methods=['GET', 'POST'])
+@app.route('/groups/<groupName>/upload', methods=['GET', 'POST'])
 def upload(groupName=None):
     if request.method == 'POST':
+        # Someone just uploaded a file
         file = request.files['newPhoto']
         if file and allowed_file(file.filename):
             # Store new image for this user
@@ -113,9 +135,42 @@ def upload(groupName=None):
 
             # Update user status
             groups[session['groupname']].setStatusSubmitted(session['username'])
-            return redirect(url_for('uploaded_file', filename=filename))
+
+            # Check if we're ready for montage
+            if groups[session['groupname']].checkAllSubmitted():
+                return redirect(url_for('createMontage', groupName=session['groupname']))
+            else:
+                return redirect(url_for('uploaded_file', filename=filename))
+        else:
+            # TODO: print some error about file extensions
+            print Error
     else:
-        return render_template('group.html', name=groupName)
+        # We want to upload a new file
+        return render_template('upload.html', name=groupName)
+
+################################################################################################
+# Show image function
+################################################################################################
+@app.route('/groups/<groupName>/montage')
+def createMontage(groupName=None):
+
+    montageCmd = 'montage '
+
+    # Get all image filenames in a string
+    # TODO: check to do only once per user, instead of per file
+    groupPath = app.config['UPLOAD_FOLDER'] + '/' + groupName + '/'
+    listing = os.listdir(groupPath)
+    memberImages = ''
+    for infile in listing:
+        memberImages += ' ' + groupPath + '/' + infile
+    log = logging.getLogger('werkzeug')
+    log.warning(memberImages)
+
+    # Create montage
+    montageFile = '  ' + groupPath + groupName + '.jpg'
+    os.system(montageCmd + memberImages + montageFile)
+
+    return send_from_directory(session['grouppath'], groupName + '.jpg')
 
 ################################################################################################
 # Show image function
