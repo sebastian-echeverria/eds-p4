@@ -25,19 +25,50 @@ from werkzeug import secure_filename
 app = Flask(__name__)
 
 # Set upt folder to upload stuff to
-UPLOAD_FOLDER = '/home/adminuser/testproject/uploads'
+UPLOAD_FOLDER = '/home/adminuser/eds-p4/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Set the secret key
 app.secret_key = 'A0Zr98j/3yX R~XHH!aijdhwwi3kjha2384/,?RT'
 
 ################################################################################################
+# Class to store group info, including the status of the members
+################################################################################################
+groups = {}
+
+class PhotoGroup:
+    def __init__(self, groupName, size, timeout):
+        self.name = groupName
+        self.size = size
+        self.timeout = timeout
+        self.memberStatus = {}
+
+    def setStatusJoined(self, userName):
+        self.memberStatus[userName] = 'init'
+
+    def setStatusSubmitted(self, userName):
+        self.memberStatus[userName] = 'submit'
+        
+    def setStatusApproved(self, userName):
+        self.memberStatus[userName] = 'approve'
+        
+    def setStatusAborted(self, userName):
+        self.memberStatus[userName] = 'abort'        
+    
+
+################################################################################################
 # Utility function to check if a filename has an allowed extension
 ################################################################################################
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
+def getExt(filename):
+    if '.' not in filename:
+        return ''
+    else:
+        return filename.rsplit('.', 1)[1]
+
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
+    return '.' in filename and getExt(filename) in ALLOWED_EXTENSIONS
 
 ################################################################################################
 # Login functionality
@@ -48,16 +79,23 @@ def login():
         # Setup session, joining group
         session['username'] = request.form['userName']
         session['groupname'] = request.form['groupName']
-        session['grouppath'] = UPLOAD_FOLDER + '/' + session['groupname']
+        session['grouppath'] = app.config['UPLOAD_FOLDER'] + '/' + session['groupname']
 
-        # Create group
-        if request.form['loginType'] == 'Create':            
-            if not os.path.exists(session['groupPath']): 
-                os.makedirs(session['groupPath'])
-            # TODO: Do something to create a group with the given size and timeout
+        # Create group if leader
+        if request.form['loginType'] == 'Create':
+            # Create folder for grup images           
+            if not os.path.exists(session['grouppath']): 
+                os.makedirs(session['grouppath'])
+
+            # Create object to store group information 
+            global groups
+            groups[session['groupname']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], request.form['timeout'])
+        
+        # Join group
+        groups[session['groupname']].setStatusJoined(session['username'])
 
         # Go to upload page 
-        return redirect(url_for('group', groupName=session['groupname']))
+        return redirect(url_for('upload', groupName=session['groupname']))
     else:
         return render_template('login.html')
 
@@ -65,13 +103,16 @@ def login():
 # Upload image functionality
 ################################################################################################
 @app.route('/groups/<groupName>', methods=['GET', 'POST'])
-def group(groupName=None):
+def upload(groupName=None):
     if request.method == 'POST':
         file = request.files['newPhoto']
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            # Store new image for this user
+            filename = session['username'] + '.' + getExt(file.filename)
             file.save(os.path.join(session['grouppath'], filename))
-            #return render_template('group.html', name=groupName, filename=filename)
+
+            # Update user status
+            groups[session['groupname']].setStatusSubmitted(session['username'])
             return redirect(url_for('uploaded_file', filename=filename))
     else:
         return render_template('group.html', name=groupName)
