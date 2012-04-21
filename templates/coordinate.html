@@ -1,0 +1,13 @@
+{% extends "loggedin.html" %}
+{% block title %}Montage Approval for Group {{ name }}{% endblock %}
+{% block subtitle %}Montage Approval for Group {{ name }}{% endblock %}
+{% block content %}
+    <form action="" method="post" enctype="multipart/form-data">
+        Montage: <br/>
+        <img name="montage" src="{{ montagePath }}"/>
+        <br/>
+        <input type="submit" name="submitBtn" value="Approve" />
+        <input type="submit" name="submitBtn" value="Reject" />
+        <input type="submit" name="submitBtn" value="Change Image" />
+    </form>
+{% endblock %}

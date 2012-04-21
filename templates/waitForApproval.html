@@ -1,0 +1,17 @@
+{% extends "loggedin.html" %}
+{% block title %}Waiting Approval for Group {{ name }}{% endblock %}
+{% block subtitle %}Waiting Approval for Group {{ name }}{% endblock %}
+{% block content %}
+        Current status: <br/>
+        <ul id="status">
+        {% for user, status in memberStatus.items() %}
+            <li>{{ user }}: {{ status }}</li>
+        {% endfor %}
+        </ul>
+
+        {% if readyToSee %}
+            <form action="" method="POST">
+                <input type="submit" value="See montage" />
+            </form>
+        {% endif %}
+{% endblock %}

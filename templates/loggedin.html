@@ -7,6 +7,7 @@
     {% if session['username'] %}
         <h2>{% block subtitle %}{% endblock %}</h2>
         <div id="content">{% block content %}{% endblock %}</div>
+        <div id="footer"><br/><br/>Logged in as: {{ session['username'] }}</div>
     {% else %}
         Please login: <a href="\">here</a>.
     {% endif %}

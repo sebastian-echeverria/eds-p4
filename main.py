@@ -26,7 +26,7 @@ from werkzeug import secure_filename
 app = Flask(__name__)
 
 # Set upt folder to upload stuff to
-UPLOAD_FOLDER = '/home/adminuser/eds-p4/uploads'
+UPLOAD_FOLDER = '/home/adminuser/eds-p4/static/uploads/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Set the secret key
@@ -63,13 +63,19 @@ class PhotoGroup:
     # Function to check if everybody has submitted an image
     ################################################################################################
     def checkAllSubmitted(self):
+        return self.checkAll('submit')
+
+    def checkAllApproved(self):
+        return self.checkAll('approve')
+
+    def checkAll(self, expectedStatus):
         #log = logging.getLogger('werkzeug')
         #log.warning('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
 
         if(len(self.memberStatus.keys()) == self.size):
             # Check if everybody has submitted
             for status in self.memberStatus.values():
-                if status != 'submit':
+                if status != expectedStatus:
                     return False
 
             # If everybody submitted, we are ok
@@ -140,13 +146,25 @@ def upload(groupName=None):
             if groups[session['groupname']].checkAllSubmitted():
                 return redirect(url_for('createMontage', groupName=session['groupname']))
             else:
-                return redirect(url_for('uploaded_file', filename=filename))
+                return redirect(url_for('waitForMontage', groupName=session['groupname']))
         else:
             # TODO: print some error about file extensions
             print Error
     else:
         # We want to upload a new file
         return render_template('upload.html', name=groupName)
+
+################################################################################################
+# Waiting for other submissions
+################################################################################################
+@app.route('/groups/<groupName>/waitForMontage', methods=['GET', 'POST'])
+def waitForMontage(groupName=None):
+    if request.method == 'GET':
+        # Show current status
+        readyToSee = groups[session['groupname']].checkAllSubmitted()
+        return render_template('waitForMontage.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus, readyToSee=readyToSee)
+    else:
+        return redirect(url_for('approval', groupName=groupName))        
 
 ################################################################################################
 # Show image function
@@ -163,14 +181,67 @@ def createMontage(groupName=None):
     memberImages = ''
     for infile in listing:
         memberImages += ' ' + groupPath + '/' + infile
-    log = logging.getLogger('werkzeug')
-    log.warning(memberImages)
+    #log = logging.getLogger('werkzeug')
+    #log.warning(memberImages)
 
     # Create montage
     montageFile = '  ' + groupPath + groupName + '.jpg'
     os.system(montageCmd + memberImages + montageFile)
 
-    return send_from_directory(session['grouppath'], groupName + '.jpg')
+    return redirect(url_for('approval', groupName=groupName))
+
+    #return send_from_directory(session['grouppath'], groupName + '.jpg')
+
+################################################################################################
+# Montage approval function (phase 1)
+################################################################################################
+@app.route('/groups/<groupName>/approval', methods=['GET', 'POST'])
+def approval(groupName=None):
+    if request.method == 'GET':
+        # Show montage for user to approve
+        montagePath = '/static/uploads/'  + groupName + '/'+ groupName + '.jpg'
+        return render_template('coordinate.html', name=groupName, montagePath=montagePath)
+    elif request.method == 'POST':
+        # Handle user approval
+        if request.form['submitBtn'] == 'Approve':
+            groups[session['groupname']].setStatusApproved(session['username']) 
+
+            # Check if we're ready to commit or have to wait
+            if groups[session['groupname']].checkAllApproved():
+                return redirect(url_for('commitMontage', groupName=session['groupname']))
+            else:
+                return redirect(url_for('waitForApproval', groupName=session['groupname']))
+
+        elif request.form['submitBtn'] == 'Reject':
+            # Go to login page, as we don't want to do anything else 
+            groups[session['groupname']].setStatusAborted(session['username'])
+            return redirect(url_for('login'))            
+        else:
+            # Go to upload page, going back to the "just joined" status
+            groups[session['groupname']].setStatusJoined(session['username'])
+            return redirect(url_for('upload', groupName=session['groupname']))            
+
+################################################################################################
+# Waiting for the rest to approve
+################################################################################################
+@app.route('/groups/<groupName>/waitForApproval', methods=['GET', 'POST'])
+def waitForApproval(groupName=None):
+    # Show current status
+    if request.method == 'GET':
+        # Show current status
+        readyToSee = groups[session['groupname']].checkAllApproved()
+        return render_template('waitForApproval.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus, readyToSee=readyToSee)
+    else:
+        return redirect(url_for('commitMontage', groupName=groupName))   
+
+################################################################################################
+# Montage done!
+################################################################################################
+@app.route('/groups/<groupName>/done')
+def commitMontage(groupName=None):
+    # Show montage, final version
+    montagePath = '/static/uploads/'  + groupName + '/'+ groupName + '.jpg'
+    return render_template('done.html', name=groupName, montagePath=montagePath)
 
 ################################################################################################
 # Show image function
