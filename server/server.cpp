@@ -138,7 +138,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     {
         putchar(record[i]);
     }
-    //putchar('\n');
+    putchar('\n');
 }
 
 //********************************************************************************

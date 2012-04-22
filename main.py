@@ -29,6 +29,7 @@
 import os
 import logging
 import time
+import socket
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session
 from werkzeug import secure_filename
 
@@ -261,17 +262,27 @@ def approval(groupName=None):
         if request.form['submitBtn'] == 'Approve':
             groups[session['groupname']].setStatusApproved(session['username']) 
 
+            # Save state to backend
+            storeStatus()
+
             # Go to waiting page if required (or it will make us jump straight to commited state)
             return redirect(url_for('waitForApproval', groupName=session['groupname']))
-
         elif request.form['submitBtn'] == 'Reject':
             # Go to upload page, and send everybody else there too
             groups[session['groupname']].setAllReady()
+
+            # Save state to backend
+            storeStatus()
+
             return redirect(url_for('upload', groupName=session['groupname']))         
         else:   # Upload new Image
             # We have to mark everybody as "submitted", aborting transaction, and this user as "ready" to add an image
             groups[session['groupname']].setAllSubmitted()
             groups[session['groupname']].setStatusReady(session['username'])
+
+            # Save state to backend
+            storeStatus()
+
             return redirect(url_for('upload', groupName=session['groupname']))            
 
 ################################################################################################
@@ -312,11 +323,27 @@ def uploaded_file(filename):
 ################################################################################################
 # Socket handling
 ################################################################################################
+def storeStatus():
+    # Connect to backend
+    port = 9995
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('127.0.0.1', port))
 
-#create an INET, STREAMing socket
-#def storeIntent():
-#    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#    s.connect((127.0.0.1, 9995))
+    # Generate message
+    status = groups[session['groupname']].memberStatus.items()
+    msg = session['groupname']
+    for user, state in status:
+        msg += '#' + user + '|' + state
+
+    # Send status
+    totalsent = 0
+    while totalsent < len(msg):
+        sent = s.send(msg[totalsent:])
+        if sent == 0:
+            raise RuntimeError("socket connection broken")
+        totalsent = totalsent + sent
+
+    s.close()
 
 ################################################################################################
 # Entry point to the app
