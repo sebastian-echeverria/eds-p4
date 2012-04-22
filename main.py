@@ -4,12 +4,23 @@
 # Sebastian Echeverria
 #
 # TODO
+#  - Step 2: create and link with RVM server...
+#  - Manage timeout in separate thread (where? how?)
+#  - Check for weird inputs
+#  - Check for weird or quick state changes
+#
+# DONE
 #  - Obtain montage library
-#  - Manage timeout and montaging in separate thread (where? how?)
+#  - Manage montaging
 #  - Create montage accept/reject page and logic
 #  - Create status page and final page
-#  - Step 2: create and link with RVM server...
-#
+#  - Fix montage to use only user images, and 1 per user
+#  - Auto- move to new montage
+#  - Auto reload "waiting" pages
+#  - Fix cached montage bug
+#  - Make "Change pic" work
+#  - Fix too-quick-steps bug
+#  - Make "Reject" work
 ################################################################################################
 
 ################################################################################################
@@ -17,6 +28,7 @@
 ################################################################################################
 import os
 import logging
+import time
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session
 from werkzeug import secure_filename
 
@@ -45,28 +57,39 @@ class PhotoGroup:
         self.memberStatus = {}
 
     ################################################################################################
-    # Functions to change the status of a user in a group
+    # Functions to change the status of a user (or users) in a group
     ################################################################################################
-    def setStatusJoined(self, userName):
-        self.memberStatus[userName] = 'init'
+    def setStatusReady(self, userName):
+        self.memberStatus[userName] = 'Ready to upload'
 
     def setStatusSubmitted(self, userName):
-        self.memberStatus[userName] = 'submit'
+        self.memberStatus[userName] = 'Image uploaded'
         
     def setStatusApproved(self, userName):
-        self.memberStatus[userName] = 'approve'
-        
-    def setStatusAborted(self, userName):
-        self.memberStatus[userName] = 'abort'
+        self.memberStatus[userName] = 'Approved montage'
+
+    def setAllReady(self):
+        for userName in self.memberStatus.keys():
+            self.setStatusReady(userName)
+
+    def setAllSubmitted(self):
+        for userName in self.memberStatus.keys():
+            self.setStatusSubmitted(userName)
 
     ################################################################################################
-    # Function to check if everybody has submitted an image
+    # Function to check current status
     ################################################################################################
+    def checkUserSubmitted(self, userName):
+        return self.memberStatus[userName] == 'Image uploaded'
+
+    def checkAllReady(self):
+        return self.checkAll('Ready to upload')
+
     def checkAllSubmitted(self):
-        return self.checkAll('submit')
+        return self.checkAll('Image uploaded')
 
     def checkAllApproved(self):
-        return self.checkAll('approve')
+        return self.checkAll('Approved montage')
 
     def checkAll(self, expectedStatus):
         #log = logging.getLogger('werkzeug')
@@ -82,11 +105,25 @@ class PhotoGroup:
             return True
         else:
             return False
-    
+
+    def anyUserReady(self):
+        for status in self.memberStatus.values():
+            if status == 'Ready to upload':
+                return True
+
+        # If everybody submitted, we are ok
+        return False
+   
 ################################################################################################
-# Utility functions to check if a filename has an allowed extension
+# Utility functions to check if a filename has an allowed extension or to extract it
 ################################################################################################
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
+
+def getFilenameWithoutExt(filename):
+    if '.' not in filename:
+        return filename
+    else:
+        return filename.rsplit('.', 1)[0]
 
 def getExt(filename):
     if '.' not in filename:
@@ -96,6 +133,15 @@ def getExt(filename):
 
 def allowed_file(filename):
     return '.' in filename and getExt(filename) in ALLOWED_EXTENSIONS
+
+def cleanFiles(filePartialPath):
+    for ext in ALLOWED_EXTENSIONS:
+        fullpath = filePartialPath + '.' + ext
+        if os.path.exists(fullpath):
+            os.remove(fullpath)
+
+def generateMontagePath(groupName):
+    return '/static/uploads/' + groupName + '/'+ groupName + '.jpg' + '?' + str(time.time())
 
 ################################################################################################
 # Login functionality
@@ -119,7 +165,7 @@ def login():
             groups[session['groupname']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], request.form['timeout'])
         
         # Join group
-        groups[session['groupname']].setStatusJoined(session['username'])
+        groups[session['groupname']].setStatusReady(session['username'])
 
         # Go to upload page 
         return redirect(url_for('upload', groupName=session['groupname']))
@@ -135,6 +181,9 @@ def upload(groupName=None):
         # Someone just uploaded a file
         file = request.files['newPhoto']
         if file and allowed_file(file.filename):
+            # Remove any previous user images
+            cleanFiles(os.path.join(session['grouppath'], session['username']))
+
             # Store new image for this user
             filename = session['username'] + '.' + getExt(file.filename)
             file.save(os.path.join(session['grouppath'], filename))
@@ -157,17 +206,15 @@ def upload(groupName=None):
 ################################################################################################
 # Waiting for other submissions
 ################################################################################################
-@app.route('/groups/<groupName>/waitForMontage', methods=['GET', 'POST'])
+@app.route('/groups/<groupName>/waitForMontage')
 def waitForMontage(groupName=None):
-    if request.method == 'GET':
-        # Show current status
-        readyToSee = groups[session['groupname']].checkAllSubmitted()
-        return render_template('waitForMontage.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus, readyToSee=readyToSee)
+    if groups[session['groupname']].checkAllSubmitted():
+        return redirect(url_for('approval', groupName=groupName))
     else:
-        return redirect(url_for('approval', groupName=groupName))        
+        return render_template('waitForMontage.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus)
 
 ################################################################################################
-# Show image function
+# Create the montage
 ################################################################################################
 @app.route('/groups/<groupName>/montage')
 def createMontage(groupName=None):
@@ -175,14 +222,15 @@ def createMontage(groupName=None):
     montageCmd = 'montage '
 
     # Get all image filenames in a string
-    # TODO: check to do only once per user, instead of per file
+    users = groups[session['groupname']].memberStatus.keys()
     groupPath = app.config['UPLOAD_FOLDER'] + '/' + groupName + '/'
     listing = os.listdir(groupPath)
     memberImages = ''
     for infile in listing:
-        memberImages += ' ' + groupPath + '/' + infile
-    #log = logging.getLogger('werkzeug')
-    #log.warning(memberImages)
+        # Check that is is a valid user image
+        if getFilenameWithoutExt(infile) in users:
+            # Concatenate to string of images
+            memberImages += ' ' + groupPath + '/' + infile
 
     # Create montage
     montageFile = '  ' + groupPath + groupName + '.jpg'
@@ -190,49 +238,60 @@ def createMontage(groupName=None):
 
     return redirect(url_for('approval', groupName=groupName))
 
-    #return send_from_directory(session['grouppath'], groupName + '.jpg')
-
 ################################################################################################
 # Montage approval function (phase 1)
 ################################################################################################
 @app.route('/groups/<groupName>/approval', methods=['GET', 'POST'])
 def approval(groupName=None):
     if request.method == 'GET':
-        # Show montage for user to approve
-        montagePath = '/static/uploads/'  + groupName + '/'+ groupName + '.jpg'
-        return render_template('coordinate.html', name=groupName, montagePath=montagePath)
+        if groups[session['groupname']].checkAllReady():
+            # Someone aborted; we all go back to uploading...
+            groups[session['groupname']].setStatusSubmitted(session['username'])
+            return redirect(url_for('upload', groupName=session['groupname']))    
+        elif groups[session['groupname']].anyUserReady():
+            # Check if someone went back to change their pictures. If so, lets go wait for the new montage
+            groups[session['groupname']].setStatusSubmitted(session['username'])
+            return redirect(url_for('waitForMontage', groupName=session['groupname']))
+        else:
+            # Show montage for user to approve
+            montagePath = generateMontagePath(groupName)
+            return render_template('coordinate.html', name=groupName, montagePath=montagePath)
     elif request.method == 'POST':
         # Handle user approval
         if request.form['submitBtn'] == 'Approve':
             groups[session['groupname']].setStatusApproved(session['username']) 
 
-            # Check if we're ready to commit or have to wait
-            if groups[session['groupname']].checkAllApproved():
-                return redirect(url_for('commitMontage', groupName=session['groupname']))
-            else:
-                return redirect(url_for('waitForApproval', groupName=session['groupname']))
+            # Go to waiting page if required (or it will make us jump straight to commited state)
+            return redirect(url_for('waitForApproval', groupName=session['groupname']))
 
         elif request.form['submitBtn'] == 'Reject':
-            # Go to login page, as we don't want to do anything else 
-            groups[session['groupname']].setStatusAborted(session['username'])
-            return redirect(url_for('login'))            
-        else:
-            # Go to upload page, going back to the "just joined" status
-            groups[session['groupname']].setStatusJoined(session['username'])
+            # Go to upload page, and send everybody else there too
+            groups[session['groupname']].setAllReady()
+            return redirect(url_for('upload', groupName=session['groupname']))         
+        else:   # Upload new Image
+            # We have to mark everybody as "submitted", aborting transaction, and this user as "ready" to add an image
+            groups[session['groupname']].setAllSubmitted()
+            groups[session['groupname']].setStatusReady(session['username'])
             return redirect(url_for('upload', groupName=session['groupname']))            
 
 ################################################################################################
-# Waiting for the rest to approve
+# Waiting for the rest to approve, or jump to end if we're done
 ################################################################################################
-@app.route('/groups/<groupName>/waitForApproval', methods=['GET', 'POST'])
+@app.route('/groups/<groupName>/waitForApproval')
 def waitForApproval(groupName=None):
-    # Show current status
-    if request.method == 'GET':
-        # Show current status
-        readyToSee = groups[session['groupname']].checkAllApproved()
-        return render_template('waitForApproval.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus, readyToSee=readyToSee)
+    if groups[session['groupname']].checkAllApproved():
+        return redirect(url_for('commitMontage', groupName=session['groupname']))
+    elif groups[session['groupname']].checkAllReady():
+        # Someone aborted; we all go back to uploading...
+        groups[session['groupname']].setStatusSubmitted(session['username'])
+        return redirect(url_for('upload', groupName=session['groupname']))    
+    elif groups[session['groupname']].anyUserReady():
+        # If we are in the "just submitted" status here, that means that the transaction was aborted while someone changes images
+        # Let's go back to the "waiting for montage" page
+        groups[session['groupname']].setStatusSubmitted(session['username'])
+        return redirect(url_for('waitForMontage', groupName=session['groupname']))
     else:
-        return redirect(url_for('commitMontage', groupName=groupName))   
+        return render_template('waitForApproval.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus)
 
 ################################################################################################
 # Montage done!
@@ -240,7 +299,7 @@ def waitForApproval(groupName=None):
 @app.route('/groups/<groupName>/done')
 def commitMontage(groupName=None):
     # Show montage, final version
-    montagePath = '/static/uploads/'  + groupName + '/'+ groupName + '.jpg'
+    montagePath = generateMontagePath(groupName)
     return render_template('done.html', name=groupName, montagePath=montagePath)
 
 ################################################################################################

@@ -1,5 +1,6 @@
 {% extends "loggedin.html" %}
 {% block title %}Waiting Submissions for Group {{ name }}{% endblock %}
+{% block extras%}<meta http-equiv="refresh" content="2">{% endblock %}
 {% block subtitle %}Waiting Submissions for Group {{ name }}{% endblock %}
 {% block content %}
         Current status: <br/>
@@ -8,10 +9,4 @@
             <li>{{ user }}: {{ status }}</li>
         {% endfor %}
         </ul>
-
-        {% if readyToSee %}
-            <form action="" method="POST">
-                <input type="submit" value="See montage" />
-            </form>
-        {% endif %}
 {% endblock %}

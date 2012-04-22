@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <title>{% block title %}{% endblock %} - Group Photo Service</title>
+    {% block extras %}{% endblock %}
 </head>
-<body>
+<body {% block bodyJS %}{% endblock %}>
     {% if session['username'] %}
         <h2>{% block subtitle %}{% endblock %}</h2>
         <div id="content">{% block content %}{% endblock %}</div>
