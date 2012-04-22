@@ -6,6 +6,7 @@
 */
 
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
 #include <signal.h>
@@ -47,6 +48,7 @@ int main(int argc, char **argv)
 #endif
 
     // Setup libevent
+    printf("Setting up\n");fflush(stdout);
 	base = event_base_new();
 	if (!base) 
     {
@@ -60,6 +62,7 @@ int main(int argc, char **argv)
 	sin.sin_port = htons(PORT);
 
     // Setup listener for socket connections
+    printf("Setting up listener\n");fflush(stdout);
 	listener = evconnlistener_new_bind(base, accept_conn_cb, NULL,
 	                                   LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
                                        (struct sockaddr*)&sin,
@@ -106,6 +109,8 @@ static void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 
+    printf("Connection accepted!\n");fflush(stdout);
+
     // Set callback for reading info, and set socket as read/write
     bufferevent_setcb(bev, read_cb, NULL, read_event_cb, NULL);
     bufferevent_enable(bev, EV_READ);
@@ -116,10 +121,16 @@ static void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
 //********************************************************************************
 static void read_cb(struct bufferevent *bev, void *ctx)
 {
-    // Copy data into an external buffer
+    // Get input buffer
     struct evbuffer *input = bufferevent_get_input(bev);
-    char *record;
     ev_uint32_t record_len = evbuffer_get_length(input);
+
+    // Setup buffer to get data
+    char* record = (char*) malloc(record_len);
+    if (record == NULL)
+        return;
+
+    // Obtain data
     evbuffer_remove(input, record, record_len);
 
     // Print what we received
@@ -127,7 +138,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     {
         putchar(record[i]);
     }
-    putchar('\n');
+    //putchar('\n');
 }
 
 //********************************************************************************
