@@ -17,7 +17,7 @@
 #include <signal.h>
 
 #include <sys/types.h>
-#include <sys/stat.h> 
+#include <sys/stat.h>
 
 #ifndef _WIN32
 #include <netinet/in.h>
@@ -33,8 +33,8 @@
 #include <event2/util.h>
 #include <event2/event.h>
 
-#include "rds.h"
-#include "rvm.h"
+#include <rvm/rds.h>
+#include <rvm/rvm.h>
 
 static const int PORT = 9995;
 
@@ -50,9 +50,9 @@ static void accept_conn_cb(struct evconnlistener *, evutil_socket_t,
 static void read_cb(struct bufferevent *bev, void *ctx);
 static void read_event_cb(struct bufferevent *bev, short events, void *ctx);
 static void signal_cb(evutil_socket_t, short, void *);
-Group* parseMsg(char* msg);
+struct Group* parseMsg(char* msg);
 
-Group* theGroup;
+struct Group* theGroup;
 
 //********************************************************************************
 // Main
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     // Setup libevent
     printf("Setting up\n");fflush(stdout);
 	base = event_base_new();
-	if (!base) 
+	if (!base)
     {
 		fprintf(stderr, "Could not initialize libevent!\n");
 		return 1;
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 	                                   LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
                                        (struct sockaddr*)&sin,
 	                                   sizeof(sin));
-	if (!listener) 
+	if (!listener)
     {
 		fprintf(stderr, "Could not create a listener!\n");
 		return 1;
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 
     // Setup signal event listener
 	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
-	if (!signal_event || event_add(signal_event, NULL)<0) 
+	if (!signal_event || event_add(signal_event, NULL)<0)
     {
 		fprintf(stderr, "Could not create/add a signal event!\n");
 		return 1;
@@ -126,7 +126,7 @@ static void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
     // We got a new connection! Set up a bufferevent for it
     struct event_base *base = evconnlistener_get_base(listener);
     struct bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	if (!bev) 
+	if (!bev)
     {
 		fprintf(stderr, "Error constructing bufferevent!");
 		event_base_loopbreak(base);
@@ -158,19 +158,32 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     evbuffer_remove(input, record, record_len);
 
     // Store in structure
-    theGroup = parseMsg(record);
+    printf("Received: %s.\n", record);
+    if(strncmp(record, "restore", strlen("restore")) == 0)
+    {
+        // Restore command received; send information back
+        char fakeGroup[] = "fake:u1|Image uploaded#u2|Approved montage#$";
+        struct evbuffer *output = bufferevent_get_output(bev);
 
-    // Print what we received
-    printf("Group name: %s (length=%d)\n", theGroup->name, strlen(theGroup->name));
-    printf("Group info: %s (length=%d)\n", theGroup->userInfoString, strlen(theGroup->userInfoString));
+        /* Copy all the data from the input buffer to the output buffer. */
+        evbuffer_add(output, fakeGroup, sizeof(fakeGroup));
+    }
+    else if(strncmp(record, "store", strlen("store")) == 0)
+    {
+        theGroup = parseMsg(record+strlen("store:"));
+
+        // Print what we received
+        printf("Group name: %s (length=%d)\n", theGroup->name, strlen(theGroup->name));
+        printf("Group info: %s (length=%d)\n", theGroup->userInfoString, strlen(theGroup->userInfoString));
+    }
 }
 
 //********************************************************************************
 // Parses a message into a group structure
 //********************************************************************************
-Group* parseMsg(char* msg)
+struct Group* parseMsg(char* msg)
 {
-    Group* newGroup = new Group();
+	struct Group* newGroup = (struct Group*) malloc(sizeof(struct Group));
 
     // Get group name
     char* delimiterPosition = strchr(msg, ':');
@@ -178,9 +191,62 @@ Group* parseMsg(char* msg)
     newGroup->name = strndup(msg, length);
     printf("l1=%d, l2=%d\n", strlen(msg), strlen(newGroup->name));
     newGroup->userInfoString = strndup(delimiterPosition+1, strrchr(msg, '#') - delimiterPosition);
-    
+
 
     return newGroup;
+}
+
+//********************************************************************************
+// Initializes RVM access, returning a pointer to the static area
+//********************************************************************************
+char* initRVM()
+{
+    rvm_options_t* options;
+    struct stat statbuf;
+    rvm_offset_t data_len;
+    char* static_area;
+    int rc;
+
+    // Initialize RVM
+    options = rvm_malloc_options();
+    options->log_dev = "LOG";
+    if (RVM_INIT(options) != RVM_SUCCESS)
+    {
+        fprintf(stderr, "RVM_INIT failed\n");
+        exit(1);
+    }
+
+    // Set up the RDS allocator to manage the DATA file
+    if (stat("DATA", &statbuf) == -1)
+        perror("stat(DATA)");
+    data_len.high = 0;
+    data_len.low = statbuf.st_size;
+    rds_load_heap("DATA", data_len, &static_area, &rc);
+    if (rc != SUCCESS)
+    {
+        fprintf(stderr, "rds_load_heap returned %d\n", rc);
+        exit(1);
+    }
+
+    return static_area;
+}
+
+//********************************************************************************
+// Initializing permanent group structure
+//********************************************************************************
+struct Group* initRVMGroup()
+{
+    rvm_tid_t tid;
+    rvm_init_tid(&tid);
+    rvm_begin_transaction(&tid, restore);
+
+    int rc;
+    struct Group* theGroup = (struct Group*) rds_malloc(sizeof(struct Group), &tid, &rc);
+    rvm_set_range(&tid, theGroup, sizeof(theGroup));
+
+    rvm_end_transaction(&tid, flush);
+
+    return theGroup;
 }
 
 //********************************************************************************
@@ -192,7 +258,7 @@ static void read_event_cb(struct bufferevent *bev, short events, void *ctx)
     {
         perror("Error from bufferevent");
     }
-    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) 
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))
     {
         bufferevent_free(bev);
     }
