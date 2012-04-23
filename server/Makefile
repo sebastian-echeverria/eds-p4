@@ -7,8 +7,8 @@ LIBS =          -levent -L/usr/lib -lrdslwp -lrvmlwp
 
 all: rvmserv
 
-rvmserv: server.c
-	gcc $(CXXFLAGS) -g -o $@ server.c $(LIBS)
+rvmserv: rvmserver.c
+	gcc $(CXXFLAGS) -g -o $@ rvmserver.c $(LIBS)
 
 clean:
 	rm -f rmserv *~

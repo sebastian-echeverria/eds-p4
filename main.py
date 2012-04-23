@@ -232,6 +232,9 @@ def login():
             global groups
             groups[request.form['groupName']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], 0)
 
+            # Notify backend
+            newGroup()
+
         # Before joining, check group exists and they aren't approving
         if (request.form['groupName'] not in groups.keys()):
             return redirect(url_for('errorPage', errorMsg="Group does not exist"))
@@ -374,6 +377,10 @@ def approval(groupName=None):
 def waitForApproval(groupName=None):
     if groups[session['groupname']].checkAllApproved() or groups[session['groupname']].checkAllDone():
         groups[session['groupname']].setAllDone()
+        
+        # Notify backend
+        endGroup()
+
         return redirect(url_for('commitMontage', groupName=session['groupname']))
     elif groups[session['groupname']].checkAllReady():
         # Someone aborted; we all go back to uploading...
@@ -413,6 +420,50 @@ def errorPage(errorMsg=None):
 ################################################################################################
 # Socket handling
 ################################################################################################
+def newGroup():
+    # Connect to backend
+    port = 9995
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('127.0.0.1', port))
+
+    # Generate message
+    msg = 'new:$'
+
+    # Send status
+    totalsent = 0
+    while totalsent < len(msg):
+        sent = s.send(msg[totalsent:])
+        if sent == 0:
+            raise RuntimeError("socket connection broken")
+        totalsent = totalsent + sent
+
+    s.close()
+
+################################################################################################
+# Socket handling
+################################################################################################
+def endGroup():
+    # Connect to backend
+    port = 9995
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('127.0.0.1', port))
+
+    # Generate message
+    msg = 'remove:$'
+
+    # Send status
+    totalsent = 0
+    while totalsent < len(msg):
+        sent = s.send(msg[totalsent:])
+        if sent == 0:
+            raise RuntimeError("socket connection broken")
+        totalsent = totalsent + sent
+
+    s.close()
+
+################################################################################################
+# Socket handling
+################################################################################################
 def storeStatus():
     # Connect to backend
     port = 9995
@@ -424,6 +475,7 @@ def storeStatus():
     msg = 'store:' + session['groupname'] + ':'
     for user, state in status:
         msg += user + '|' + state + '#' 
+    msg += '$'
 
     # Send status
     totalsent = 0
@@ -445,7 +497,7 @@ def restoreStatus():
     s.connect(('127.0.0.1', port))
 
     # Generate message
-    msg = 'restore:'
+    msg = 'restore:$'
 
     # Send request
     totalsent = 0
@@ -507,7 +559,6 @@ def initApp():
     global initialized_app
     if not initialized_app:
         initialized_app = True
-        restoreStatus()
 
 ################################################################################################
 # Entry point to the app
