@@ -108,7 +108,7 @@ class PhotoGroup:
     ################################################################################################
     def isUserReady(self, userName):
         if userName in self.memberStatus.keys():        
-            self.memberStatus[userName] == self.textReadyStatus
+            return self.memberStatus[userName] == self.textReadyStatus
         else:
             return False
 
@@ -120,13 +120,13 @@ class PhotoGroup:
 
     def isUserApproved(self, userName):
         if userName in self.memberStatus.keys():
-            self.memberStatus[userName] == self.textApprovedStatus
+            return self.memberStatus[userName] == self.textApprovedStatus
         else:
             return False
 
     def isUserDone(self, userName):
         if userName in self.memberStatus.keys():
-            self.memberStatus[userName] == self.textDoneStatus
+            return self.memberStatus[userName] == self.textDoneStatus
         else:
             return False
 
@@ -244,7 +244,7 @@ def login():
             # Depending on status from current Group, redirect to page that the user was before
             if groups[session['groupname']].isUserSubmitted(session['username'] ):
                 return redirect(url_for('waitForMontage', groupName=session['groupname']))
-            elif groups[session['groupname']].isUserApproved(session['username'] ):
+            elif groups[session['groupname']].isUserApproved(session['username']):
                 return redirect(url_for('waitForApproval', groupName=session['groupname']))
             elif groups[session['groupname']].isUserDone(session['username'] ):
                 return redirect(url_for('commitMontage', groupName=session['groupname']))
