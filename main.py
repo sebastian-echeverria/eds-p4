@@ -4,9 +4,9 @@
 # Sebastian Echeverria
 #
 # TODO
-#  - Step 2: create and link with RVM server...
+#  - Step 2: receive and load recovery info
 #  - Manage timeout in separate thread (where? how?)
-#  - Check for weird inputs
+#  - Check for weird inputs (including invalid chars: :, # and |
 #  - Check for weird or quick state changes
 #
 # DONE
@@ -21,6 +21,7 @@
 #  - Make "Change pic" work
 #  - Fix too-quick-steps bug
 #  - Make "Reject" work
+#  - Step 2: send info about status
 ################################################################################################
 
 ################################################################################################
@@ -51,6 +52,11 @@ app.secret_key = 'A0Zr98j/3yX R~XHH!aijdhwwi3kjha2384/,?RT'
 groups = {}
 
 class PhotoGroup:
+    textReadyStatus     = 'Ready to upload'
+    textSubmittedStatus = 'Image uploaded'
+    textApprovedStatus  = 'Approved montage'
+    textDoneStatus      = 'Done'
+
     def __init__(self, groupName, size, timeout):
         self.name = groupName
         self.size = int(size)
@@ -58,17 +64,23 @@ class PhotoGroup:
         self.memberStatus = {}
 
     ################################################################################################
-    # Functions to change the status of a user (or users) in a group
+    # Functions to change the status of a user in a group
     ################################################################################################
     def setStatusReady(self, userName):
-        self.memberStatus[userName] = 'Ready to upload'
+        self.memberStatus[userName] = self.textReadyStatus
 
     def setStatusSubmitted(self, userName):
-        self.memberStatus[userName] = 'Image uploaded'
+        self.memberStatus[userName] = self.textSubmittedStatus
         
     def setStatusApproved(self, userName):
-        self.memberStatus[userName] = 'Approved montage'
+        self.memberStatus[userName] = self.textApprovedStatus
 
+    def setStatusDone(self, userName):
+        self.memberStatus[userName] = self.textDoneStatus
+
+    ################################################################################################
+    # Functions to change the status of ALL users in a group
+    ################################################################################################
     def setAllReady(self):
         for userName in self.memberStatus.keys():
             self.setStatusReady(userName)
@@ -77,20 +89,30 @@ class PhotoGroup:
         for userName in self.memberStatus.keys():
             self.setStatusSubmitted(userName)
 
+    def setAllDone(self):
+        for userName in self.memberStatus.keys():
+            self.setStatusDone(userName)
+
     ################################################################################################
-    # Function to check current status
+    # Function to check current status for a specific
     ################################################################################################
     def checkUserSubmitted(self, userName):
         return self.memberStatus[userName] == 'Image uploaded'
 
+    ################################################################################################
+    # Function to check current status for the whole group
+    ################################################################################################
     def checkAllReady(self):
-        return self.checkAll('Ready to upload')
+        return self.checkAll(self.textReadyStatus)
 
     def checkAllSubmitted(self):
-        return self.checkAll('Image uploaded')
+        return self.checkAll(self.textSubmittedStatus)
 
     def checkAllApproved(self):
-        return self.checkAll('Approved montage')
+        return self.checkAll(self.textApprovedStatus)
+
+    def checkAllDone(self):
+        return self.checkAll(self.textDoneStatus)
 
     def checkAll(self, expectedStatus):
         #log = logging.getLogger('werkzeug')
@@ -109,7 +131,15 @@ class PhotoGroup:
 
     def anyUserReady(self):
         for status in self.memberStatus.values():
-            if status == 'Ready to upload':
+            if status == self.textReadyStatus:
+                return True
+
+        # If everybody submitted, we are ok
+        return False
+
+    def anyUserApproved(self):
+        for status in self.memberStatus.values():
+            if status == self.textApprovedStatus:
                 return True
 
         # If everybody submitted, we are ok
@@ -149,6 +179,11 @@ def generateMontagePath(groupName):
 ################################################################################################
 @app.route('/', methods=['GET', 'POST'])
 def login():
+    # Logout, just in case
+    session.pop('username', None)
+    session.pop('groupname', None)
+    session.pop('grouppath', None)
+
     if request.method == 'POST':
         # Setup session, joining group
         session['username'] = request.form['userName']
@@ -161,15 +196,17 @@ def login():
             if not os.path.exists(session['grouppath']): 
                 os.makedirs(session['grouppath'])
 
-            # Create object to store group information 
+            # Create object to store group information (request.form['timeout'])
             global groups
-            groups[session['groupname']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], request.form['timeout'])
-        
-        # Join group
-        groups[session['groupname']].setStatusReady(session['username'])
+            groups[session['groupname']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], 0)
 
-        # Go to upload page 
-        return redirect(url_for('upload', groupName=session['groupname']))
+        # Before joining, check group exists and they aren't approving
+        if (session['groupname'] not in groups.keys()):
+            return redirect(url_for('errorPage', errorMsg="Group does not exist"))
+        else:
+            # Join group and go to upload page
+            groups[session['groupname']].setStatusReady(session['username'])
+            return redirect(url_for('upload', groupName=session['groupname']))
     else:
         return render_template('login.html')
 
@@ -198,8 +235,8 @@ def upload(groupName=None):
             else:
                 return redirect(url_for('waitForMontage', groupName=session['groupname']))
         else:
-            # TODO: print some error about file extensions
-            print Error
+            # Error about file extensions
+            return redirect(url_for('errorPage', errorMsg="Invalid image to upload"))
     else:
         # We want to upload a new file
         return render_template('upload.html', name=groupName)
@@ -209,7 +246,7 @@ def upload(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/waitForMontage')
 def waitForMontage(groupName=None):
-    if groups[session['groupname']].checkAllSubmitted():
+    if groups[session['groupname']].checkAllReady() or groups[session['groupname']].anyUserApproved():
         return redirect(url_for('approval', groupName=groupName))
     else:
         return render_template('waitForMontage.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus)
@@ -290,7 +327,8 @@ def approval(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/waitForApproval')
 def waitForApproval(groupName=None):
-    if groups[session['groupname']].checkAllApproved():
+    if groups[session['groupname']].checkAllApproved() or groups[session['groupname']].checkAllDone():
+        groups[session['groupname']].setAllDone()
         return redirect(url_for('commitMontage', groupName=session['groupname']))
     elif groups[session['groupname']].checkAllReady():
         # Someone aborted; we all go back to uploading...
@@ -321,6 +359,13 @@ def uploaded_file(filename):
     return send_from_directory(session['grouppath'], filename)
 
 ################################################################################################
+# Show image function
+################################################################################################
+@app.route('/error/<errorMsg>')
+def errorPage(errorMsg=None):
+    return render_template('error.html', errorMsg=errorMsg)
+
+################################################################################################
 # Socket handling
 ################################################################################################
 def storeStatus():
@@ -331,9 +376,9 @@ def storeStatus():
 
     # Generate message
     status = groups[session['groupname']].memberStatus.items()
-    msg = session['groupname']
+    msg = session['groupname'] + ':'
     for user, state in status:
-        msg += '#' + user + '|' + state
+        msg += user + '|' + state + '#' 
 
     # Send status
     totalsent = 0

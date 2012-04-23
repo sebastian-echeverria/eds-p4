@@ -1,15 +1,24 @@
-/*
-  This exmple program provides a trivial server program that listens for TCP
-  connections on port 9995.  When they arrive, it prints the information to screen.
-
-  Where possible, it exits cleanly in response to a SIGINT (ctrl-c).
-*/
+//********************************************************************************
+// EDS - Spring 2012
+// Project 4: Robust Group Photo Service
+// Sebastian Echeverria
+//
+// Based on libevent sample
+//
+// TODO:
+//  - Store in RVM
+//  - Read from RVM and send when requested
+//********************************************************************************
 
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
 #include <signal.h>
+
+#include <sys/types.h>
+#include <sys/stat.h> 
+
 #ifndef _WIN32
 #include <netinet/in.h>
 # ifdef _XOPEN_SOURCE_EXTENDED
@@ -24,13 +33,26 @@
 #include <event2/util.h>
 #include <event2/event.h>
 
+#include "rds.h"
+#include "rvm.h"
+
 static const int PORT = 9995;
+
+struct Group
+{
+    char* name;
+    char* userInfoString;
+};
+
 
 static void accept_conn_cb(struct evconnlistener *, evutil_socket_t,
                            struct sockaddr *, int socklen, void *);
 static void read_cb(struct bufferevent *bev, void *ctx);
 static void read_event_cb(struct bufferevent *bev, short events, void *ctx);
 static void signal_cb(evutil_socket_t, short, void *);
+Group* parseMsg(char* msg);
+
+Group* theGroup;
 
 //********************************************************************************
 // Main
@@ -93,6 +115,8 @@ int main(int argc, char **argv)
 	return 0;
 }
 
+
+
 //********************************************************************************
 // Listener for socket events, called when we receive a connection
 //********************************************************************************
@@ -133,12 +157,30 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     // Obtain data
     evbuffer_remove(input, record, record_len);
 
+    // Store in structure
+    theGroup = parseMsg(record);
+
     // Print what we received
-    for(unsigned int i=0; i<record_len; i++)
-    {
-        putchar(record[i]);
-    }
-    putchar('\n');
+    printf("Group name: %s (length=%d)\n", theGroup->name, strlen(theGroup->name));
+    printf("Group info: %s (length=%d)\n", theGroup->userInfoString, strlen(theGroup->userInfoString));
+}
+
+//********************************************************************************
+// Parses a message into a group structure
+//********************************************************************************
+Group* parseMsg(char* msg)
+{
+    Group* newGroup = new Group();
+
+    // Get group name
+    char* delimiterPosition = strchr(msg, ':');
+    int length = delimiterPosition - msg;
+    newGroup->name = strndup(msg, length);
+    printf("l1=%d, l2=%d\n", strlen(msg), strlen(newGroup->name));
+    newGroup->userInfoString = strndup(delimiterPosition+1, strrchr(msg, '#') - delimiterPosition);
+    
+
+    return newGroup;
 }
 
 //********************************************************************************
