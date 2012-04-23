@@ -4,10 +4,11 @@
 # Sebastian Echeverria
 #
 # TODO
-#  - Step 2: use recovery info
+#  - Manage case where new users add themselves to exiting retored transaction
 #  - Manage timeout in separate thread (where? how?)
 #  - Check for weird inputs (including invalid chars: :, # and |
 #  - Check for weird or quick state changes
+#  - Improve visuals
 #
 # DONE
 #  - Obtain montage library
@@ -23,6 +24,7 @@
 #  - Make "Reject" work
 #  - Step 2: send info about status
 #  - Step 2: receive recovery info
+#  - Step 2: use recovery info
 ################################################################################################
 
 ################################################################################################
@@ -105,16 +107,28 @@ class PhotoGroup:
     # Function to check current status for a specific
     ################################################################################################
     def isUserReady(self, userName):
-        return self.memberStatus[userName] == self.textReadyStatus
+        if userName in self.memberStatus.keys():        
+            self.memberStatus[userName] == self.textReadyStatus
+        else:
+            return False
 
     def isUserSubmitted(self, userName):
-        return self.memberStatus[userName] == self.textSubmittedStatus
+        if userName in self.memberStatus.keys():
+            return self.memberStatus[userName] == self.textSubmittedStatus
+        else:
+            return False
 
     def isUserApproved(self, userName):
-        return self.memberStatus[userName] == self.textApprovedStatus
+        if userName in self.memberStatus.keys():
+            self.memberStatus[userName] == self.textApprovedStatus
+        else:
+            return False
 
     def isUserDone(self, userName):
-        return self.memberStatus[userName] == self.textDoneStatus
+        if userName in self.memberStatus.keys():
+            self.memberStatus[userName] == self.textDoneStatus
+        else:
+            return False
 
     ################################################################################################
     # Function to check current status for the whole group
@@ -137,8 +151,9 @@ class PhotoGroup:
 
         if(len(self.memberStatus.keys()) == self.size):
             # Check if everybody has submitted
-            for status in self.memberStatus.values():
+            for key, status in self.memberStatus.items():
                 if status != expectedStatus:
+                    log.warning(key + " " + status)
                     return False
 
             # If everybody submitted, we are ok
@@ -272,11 +287,11 @@ def upload(groupName=None):
         return render_template('upload.html', name=groupName)
 
 ################################################################################################
-# Waiting for other submissions
+# Waiting for other submissions   
 ################################################################################################
 @app.route('/groups/<groupName>/waitForMontage')
 def waitForMontage(groupName=None):
-    if groups[session['groupname']].checkAllReady() or groups[session['groupname']].anyUserApproved():
+    if groups[session['groupname']].checkAllSubmitted() or groups[session['groupname']].anyUserApproved():
         return redirect(url_for('approval', groupName=groupName))
     else:
         return render_template('waitForMontage.html', name=groupName, memberStatus=groups[session['groupname']].memberStatus)

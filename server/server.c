@@ -8,6 +8,7 @@
 // TODO:
 //  - Store in RVM
 //  - Read from RVM and send when requested
+//  - Cleanup status after appproving (requires message?)
 //********************************************************************************
 
 #include <string.h>
@@ -44,14 +45,16 @@ struct Group
     char* userInfoString;
 };
 
-
 static void accept_conn_cb(struct evconnlistener *, evutil_socket_t,
                            struct sockaddr *, int socklen, void *);
 static void read_cb(struct bufferevent *bev, void *ctx);
 static void read_event_cb(struct bufferevent *bev, short events, void *ctx);
 static void signal_cb(evutil_socket_t, short, void *);
 struct Group* parseMsg(char* msg);
+char* initRVM();
+struct Group* initRVMGroup();
 
+// Persistent global variable with group info
 struct Group* theGroup;
 
 //********************************************************************************
@@ -77,6 +80,12 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not initialize libevent!\n");
 		return 1;
 	}
+
+    // Init RVM
+    initRVM();
+
+    // Init group structure (TODO: how to do thisn, and to ensure it's only once.
+    //theGroup = initRVMGroup();
 
     // Init socket
 	memset(&sin, 0, sizeof(sin));
@@ -114,8 +123,6 @@ int main(int argc, char **argv)
 	printf("done\n");
 	return 0;
 }
-
-
 
 //********************************************************************************
 // Listener for socket events, called when we receive a connection
@@ -167,6 +174,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
         /* Copy all the data from the input buffer to the output buffer. */
         evbuffer_add(output, fakeGroup, sizeof(fakeGroup));
+        //evbuffer_add(output, theGroup->userInfoString, sizeof(theGroup->userInfoString);
     }
     else if(strncmp(record, "store", strlen("store")) == 0)
     {
@@ -184,6 +192,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 struct Group* parseMsg(char* msg)
 {
 	struct Group* newGroup = (struct Group*) malloc(sizeof(struct Group));
+    //newGroup = theGroup
 
     // Get group name
     char* delimiterPosition = strchr(msg, ':');
@@ -209,7 +218,7 @@ char* initRVM()
 
     // Initialize RVM
     options = rvm_malloc_options();
-    options->log_dev = "LOG";
+    options->log_dev = "../rvm/LOG";
     if (RVM_INIT(options) != RVM_SUCCESS)
     {
         fprintf(stderr, "RVM_INIT failed\n");
@@ -217,17 +226,18 @@ char* initRVM()
     }
 
     // Set up the RDS allocator to manage the DATA file
-    if (stat("DATA", &statbuf) == -1)
-        perror("stat(DATA)");
+    if (stat("../rvm/DATA", &statbuf) == -1)
+        perror("stat(../rvm/DATA)");
     data_len.high = 0;
     data_len.low = statbuf.st_size;
-    rds_load_heap("DATA", data_len, &static_area, &rc);
+    rds_load_heap("../rvm/DATA", data_len, &static_area, &rc);
     if (rc != SUCCESS)
     {
         fprintf(stderr, "rds_load_heap returned %d\n", rc);
         exit(1);
     }
 
+    printf("RVM loaded correctly\n");
     return static_area;
 }
 
@@ -247,6 +257,24 @@ struct Group* initRVMGroup()
     rvm_end_transaction(&tid, flush);
 
     return theGroup;
+}
+
+//********************************************************************************
+// Updaing permanent group structure
+//********************************************************************************
+struct Group* updateGroup(struct Group* group)
+{
+    rvm_tid_t tid;
+    rvm_init_tid(&tid);
+    rvm_begin_transaction(&tid, restore);
+
+    int rc;
+    group = (struct Group*) rds_malloc(sizeof(struct Group), &tid, &rc);
+    rvm_set_range(&tid, group, sizeof(group));
+
+    rvm_end_transaction(&tid, flush);
+
+    return group;
 }
 
 //********************************************************************************
