@@ -202,14 +202,15 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     }
     else if(strncmp(record, "store", strlen("store")) == 0)
     {
-        // Check data recieved
+        // Check start data marker
+        char* start = strchr(record, ':') + 1;
         char* endMarker = strrchr(record, '$');
-        int msgLength = endMarker - record + 1; // Include marker in saved data
+        int msgLength = endMarker - start + 1; // Include marker in saved data
 
         // Turn into string
         char* dataToStore = (char*) malloc(msgLength + 1);  // +1 for null terminator
         memset(dataToStore, 0, msgLength + 1);
-        memcpy(dataToStore, record, msgLength);
+        memcpy(dataToStore, start, msgLength);
 
         // Store data in RVM
         printf("Received: %s \n", dataToStore);
@@ -228,12 +229,12 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
         if(g_groupState != NULL)
         {
-            printf("Sending %s\n", g_groupState);
+            printf("Sending %s.\n", g_groupState);
             evbuffer_add(output, g_groupState, strlen(g_groupState)+1);
         }
         else
         {
-            evbuffer_add(output, "Error: group not found", strlen("Error: group not found")+1);
+            evbuffer_add(output, "groupNotFound$", strlen("groupNotFound$")+1);
             printf("Couldn't restore group session as there was no session loaded\n");
         }
     }

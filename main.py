@@ -4,6 +4,7 @@
 # Sebastian Echeverria
 #
 # TODO
+#  - When recovering, we are dependent on session still being there (fore users...)
 #  - Manage case where new users add themselves to exiting retored transaction
 #  - Manage timeout in separate thread (where? how?)
 #  - Check for weird inputs (including invalid chars: :, # and |
@@ -215,9 +216,6 @@ def login():
     session.pop('username', None)
     session.pop('groupname', None)
     session.pop('grouppath', None)
-
-    # Restore state if necessary
-    initApp();
 
     if request.method == 'POST':
         groupPath = app.config['UPLOAD_FOLDER'] + '/' + request.form['groupName']     
@@ -527,7 +525,7 @@ def restoreStatus():
 def parseRestoreMsg(msg):
     # Get group name
     parts = msg.split(':')
-    if len(parts) == 0:
+    if len(parts) < 2:
         # Nothing to restore
         return  
     else:
@@ -559,11 +557,14 @@ def initApp():
     global initialized_app
     if not initialized_app:
         initialized_app = True
+        restoreStatus();
 
 ################################################################################################
 # Entry point to the app
 ################################################################################################
 if __name__ == '__main__':
+    # Restore state if necessary
+    initApp();
     app.run(debug=True, host='0.0.0.0')
 
 
