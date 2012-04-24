@@ -229,6 +229,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
         if(g_groupState != NULL)
         {
+            // Send msg
             printf("Sending %s.\n", g_groupState);
             evbuffer_add(output, g_groupState, strlen(g_groupState)+1);
         }
@@ -327,6 +328,8 @@ void newGroupSession()
 
     int rc;
     g_groupState = (char*) rds_malloc(MAX_GROUPINFO_SIZE, &tid, &rc);
+    memset(g_groupState, 0, MAX_GROUPINFO_SIZE);    
+    *g_groupState = '$';
     rvm_set_range(&tid, g_groupState, MAX_GROUPINFO_SIZE);
 
     // Store pointer in static area
