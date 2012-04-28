@@ -5,7 +5,6 @@
 #
 # TODO
 #  - Improve how to get to a group directly through a link
-#  - Remove hardcoded filesystem folder; obtain it relative somehow
 #  - Manage case where new users add themselves to exiting restored transaction
 #  - Manage timeout in separate thread (where? how?)
 #  - Check for weird inputs (including invalid chars: :, # and |
@@ -27,6 +26,7 @@
 #  - Step 2: send info about status
 #  - Step 2: receive recovery info
 #  - Step 2: use recovery info
+#  - Remove hardcoded filesystem folder; obtain it relative somehow
 ################################################################################################
 
 ################################################################################################
@@ -79,6 +79,12 @@ def allowed_file(filename):
     return '.' in filename and getExt(filename) in ALLOWED_EXTENSIONS
 
 # Removes all files in the given path/filename with the allowed extensions
+def cleanAllFiles(folderPath):
+    listing = os.listdir(folderPath)
+    for imageFile in listing:
+        os.remove(folderPath + "/" + imageFile)
+
+# Removes all files in the given path/filename with the allowed extensions
 def cleanFiles(filePathWithoutExt):
     for ext in ALLOWED_EXTENSIONS:
         fullpath = filePathWithoutExt + '.' + ext
@@ -99,7 +105,7 @@ groups = {}
 # The class itself with group info
 class PhotoGroup:
     # Full path where images will be stored for all groups
-    UPLOAD_FOLDER = '/home/adminuser/eds-p4/static/uploads/'
+    UPLOAD_FOLDER = '/static/uploads/'
 
     # Texts for each statuss
     textReadyStatus     = 'Ready to upload'
@@ -117,10 +123,13 @@ class PhotoGroup:
         self.memberStatus = {}
 
     ################################################################################################
-    # Function to get the full path where group images are stored
+    # Function to get the full path where group images are stored, and relative for montage
     ################################################################################################
     def getGroupFSPath(self):
-        return self.UPLOAD_FOLDER + '/' + self.name
+        return os.getcwd() + self.UPLOAD_FOLDER + '/' + self.name
+
+    def generateMontagePath(self):
+        return self.UPLOAD_FOLDER + self.name + '/'+ self.name + '.jpg' + '?' + str(time.time())
     
     # Functions to change the status of a user in a group
     ################################################################################################
@@ -407,13 +416,14 @@ def login():
             groupPath = groups[request.form['groupName']].getGroupFSPath()
             if not os.path.exists(groupPath): 
                 os.makedirs(groupPath)
+            cleanAllFiles(groupPath)
 
             # Notify backend
             BackendManager.createGroup()
 
         # Before joining, check group exists and they aren't approving
         if (request.form['groupName'] not in groups.keys()):
-            return redirect(url_for('errorPage', errorMsg="Group does not exist"))
+            return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
         else:
             # Setup session, joining group
             userName = request.form['userName']
@@ -468,7 +478,7 @@ def upload(groupName=None):
                 return redirect(url_for('waitForMontage', groupName=groupName))
         else:
             # Error about file extensions
-            return redirect(url_for('errorPage', errorMsg="Invalid image to upload"))
+            return redirect(url_for('errorPage', errorMsg="invalidFile"))
     else:
         # We want to upload a new file
         groupURL = request.base_url.replace('http', 'picshare')
@@ -528,7 +538,7 @@ def approval(groupName=None):
             return redirect(url_for('waitForMontage', groupName=groupName))
         else:
             # Show montage for user to approve
-            montagePath = generateMontagePath(groupName)
+            montagePath = groups[groupName].generateMontagePath()
             return render_template('coordinate.html', name=groupName, montagePath=montagePath)
     elif request.method == 'POST':
         # Handle user approval
@@ -607,7 +617,11 @@ def uploaded_file(filename):
 ################################################################################################
 @app.route('/error/<errorMsg>')
 def errorPage(errorMsg=None):
-    return render_template('error.html', errorMsg=errorMsg)
+    if(errorMsg == 'nonExistentGroup'):
+        errorMsgString = 'Group does not exist'
+    elif(errorMsg == 'invalidFile'):
+        errorMsgString = 'Invalid image to upload'
+    return render_template('error.html', errorMsg=errorMsgString)
 
 ################################################################################################
 # Restores a group
