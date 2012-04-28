@@ -189,6 +189,18 @@ class PhotoGroup:
     def checkAllDone(self):
         return self.checkAll(self.textDoneStatus)
 
+    def checkAllApprovedOrDone(self):
+        if(len(self.memberStatus.keys()) == self.size):
+            # Check if everybody has submitted
+            for key, status in self.memberStatus.items():
+                if (status != self.textApprovedStatus) and (status != self.textDoneStatus):
+                    return False
+
+            # If everybody submitted, we are ok
+            return True
+        else:
+            return False
+
     def checkAll(self, expectedStatus):
         log = logging.getLogger('werkzeug')
         log.warning('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
@@ -447,7 +459,8 @@ def upload(groupName=None):
             return redirect(url_for('errorPage', errorMsg="Invalid image to upload"))
     else:
         # We want to upload a new file
-        return render_template('upload.html', name=groupName)
+        groupURL = request.base_url.replace('http', 'picshare')
+        return render_template('upload.html', name=groupName, groupURL=groupURL)
 
 ################################################################################################
 # Waiting for other submissions   
@@ -538,26 +551,26 @@ def approval(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/waitForApproval')
 def waitForApproval(groupName=None):
-    if groups[groupName].checkAllApproved():
-        # If all have just approved, mark everybody as done and notify backend to terminate group
-        groups[groupName].setAllDone()
-        BackendManager.removeGroup()
-        
-        # Go to final montage
-        return redirect(url_for('commitMontage', groupName=groupName))
-    elif groups[groupName].checkAllDone():
-        # If somebody else already checked that all aproved and marked everybody as done, go see final montage
+    if groups[groupName].checkAllApprovedOrDone():
+        # All have approved! Set this user as done (all have approved and he will know about it now)
+        groups[groupName].setStatusDone(session['username'])
+
+        if groups[groupName].checkAllDone():
+            # If we are the last one asking for the montage status, remove session
+            BackendManager.removeGroup()
+
+        # Show the montage to the user
         return redirect(url_for('commitMontage', groupName=groupName))
     elif groups[groupName].checkAllReady():
         # Someone aborted; we all go back to uploading...
         groups[groupName].setStatusSubmitted(session['username'])
         return redirect(url_for('upload', groupName=groupName))    
     elif groups[groupName].anyUserReady():
-        # If we are in the "just submitted" status here, that means that the transaction was aborted while someone changes images
-        # Let's go back to the "waiting for montage" page
+        # Someone aborted to change their image; let's go back to the "waiting for montage" page
         groups[groupName].setStatusSubmitted(session['username'])
         return redirect(url_for('waitForMontage', groupName=groupName))
     else:
+        # Nothing new that is useful; still waiting for approvals or one abort
         return render_template('waitForApproval.html', name=groupName, memberStatus=groups[groupName].memberStatus)
 
 ################################################################################################
