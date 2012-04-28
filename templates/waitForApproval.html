@@ -5,7 +5,7 @@
 {% block content %}
         Current status: <br/>
         <ul id="status">
-        {% for user, status in memberStatus.items() %}
+        {% for user, status in memberStatus %}
             <li>{{ user }}: {{ status }}</li>
         {% endfor %}
         </ul>

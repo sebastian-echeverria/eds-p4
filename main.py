@@ -4,6 +4,8 @@
 # Sebastian Echeverria
 #
 # TODO
+#  - Use AJAX
+#  - Fix Reject (post change pic) bug with 3 devices (one Android)
 #  - Improve how to get to a group directly through a link
 #  - Manage case where new users add themselves to exiting restored transaction
 #  - Manage timeout in separate thread (where? how?)
@@ -34,10 +36,11 @@
 ################################################################################################
 import os
 import logging
-import time
-import socket
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session
-from werkzeug import secure_filename
+
+# Internal imports
+from photoGroup import PhotoGroup
+from backendMan import BackendManager
 
 ################################################################################################
 # General app configuration
@@ -55,7 +58,7 @@ def log(msg):
     log.warning(msg)
 
 ################################################################################################
-# File-related utility functions
+# Generic file utils
 ################################################################################################
 
 # Returns the name of a file without its extension
@@ -72,17 +75,21 @@ def getExt(filename):
     else:
         return filename.rsplit('.', 1)[1]
 
+# Removes all files in the given folder
+def cleanAllFiles(folderPath):
+    listing = os.listdir(folderPath)
+    for imageFile in listing:
+        os.remove(folderPath + "/" + imageFile)
+
+################################################################################################
+# File function for allowed images and image folder handling
+################################################################################################
+
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
 # Checks if a file has an extension in the list of allowed extensions
 def allowed_file(filename):
     return '.' in filename and getExt(filename) in ALLOWED_EXTENSIONS
-
-# Removes all files in the given path/filename with the allowed extensions
-def cleanAllFiles(folderPath):
-    listing = os.listdir(folderPath)
-    for imageFile in listing:
-        os.remove(folderPath + "/" + imageFile)
 
 # Removes all files in the given path/filename with the allowed extensions
 def cleanFiles(filePathWithoutExt):
@@ -91,311 +98,23 @@ def cleanFiles(filePathWithoutExt):
         if os.path.exists(fullpath):
             os.remove(fullpath)
 
-# URL path for montage picture
-def generateMontagePath(groupName):
-    return '/static/uploads/' + groupName + '/'+ groupName + '.jpg' + '?' + str(time.time())
-
 ################################################################################################
-# Class to store group info, including the status of the members
-################################################################################################
-
 # Global variable to store the existing groups' information
-groups = {}
-
-# The class itself with group info
-class PhotoGroup:
-    # Full path where images will be stored for all groups
-    UPLOAD_FOLDER = '/static/uploads/'
-
-    # Texts for each statuss
-    textReadyStatus     = 'Ready to upload'
-    textSubmittedStatus = 'Image uploaded'
-    textApprovedStatus  = 'Approved montage'
-    textDoneStatus      = 'Done'
-
-    ################################################################################################
-    # Constructor
-    ################################################################################################
-    def __init__(self, groupName, size, timeout):
-        self.name = groupName
-        self.size = int(size)
-        self.timeout = timeout
-        self.memberStatus = {}
-
-    ################################################################################################
-    # Function to get the full path where group images are stored, and relative for montage
-    ################################################################################################
-    def getGroupFSPath(self):
-        return os.getcwd() + self.UPLOAD_FOLDER + '/' + self.name
-
-    def generateMontagePath(self):
-        return self.UPLOAD_FOLDER + self.name + '/'+ self.name + '.jpg' + '?' + str(time.time())
-    
-    # Functions to change the status of a user in a group
-    ################################################################################################
-    def setStatus(self, userName, status):
-        self.memberStatus[userName] = status
-
-    def setStatusReady(self, userName):
-        self.setStatus(userName, self.textReadyStatus)
-
-    def setStatusSubmitted(self, userName):
-        self.setStatus(userName, self.textSubmittedStatus)
-        
-    def setStatusApproved(self, userName):
-        self.setStatus(userName, self.textApprovedStatus)
-
-    def setStatusDone(self, userName):
-        self.setStatus(userName, self.textDoneStatus)
-
-    ################################################################################################
-    # Functions to change the status of ALL users in a group
-    ################################################################################################
-    def setAllReady(self):
-        for userName in self.memberStatus.keys():
-            self.setStatusReady(userName)
-
-    def setAllSubmitted(self):
-        for userName in self.memberStatus.keys():
-            self.setStatusSubmitted(userName)
-
-    def setAllDone(self):
-        for userName in self.memberStatus.keys():
-            self.setStatusDone(userName)
-
-    ################################################################################################
-    # Function to check current status for a specific
-    ################################################################################################
-    def isUserReady(self, userName):
-        if userName in self.memberStatus.keys():        
-            return self.memberStatus[userName] == self.textReadyStatus
-        else:
-            return False
-
-    def isUserSubmitted(self, userName):
-        if userName in self.memberStatus.keys():
-            return self.memberStatus[userName] == self.textSubmittedStatus
-        else:
-            return False
-
-    def isUserApproved(self, userName):
-        if userName in self.memberStatus.keys():
-            return self.memberStatus[userName] == self.textApprovedStatus
-        else:
-            return False
-
-    def isUserDone(self, userName):
-        if userName in self.memberStatus.keys():
-            return self.memberStatus[userName] == self.textDoneStatus
-        else:
-            return False
-
-    ################################################################################################
-    # Function to check current status for the whole group
-    ################################################################################################
-    def checkAllReady(self):
-        return self.checkAll(self.textReadyStatus)
-
-    def checkAllSubmitted(self):
-        return self.checkAll(self.textSubmittedStatus)
-
-    def checkAllApproved(self):
-        return self.checkAll(self.textApprovedStatus)
-
-    def checkAllDone(self):
-        return self.checkAll(self.textDoneStatus)
-
-    def checkAllApprovedOrDone(self):
-        if(len(self.memberStatus.keys()) == self.size):
-            # Check if everybody has submitted
-            for key, status in self.memberStatus.items():
-                if (status != self.textApprovedStatus) and (status != self.textDoneStatus):
-                    return False
-
-            # If everybody submitted, we are ok
-            return True
-        else:
-            return False
-
-    def checkAll(self, expectedStatus):
-        #log('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
-
-        if(len(self.memberStatus.keys()) == self.size):
-            # Check if everybody has submitted
-            for key, status in self.memberStatus.items():
-                if status != expectedStatus:
-                    #log(key + " " + status)
-                    return False
-
-            # If everybody submitted, we are ok
-            return True
-        else:
-            return False
-
-    ################################################################################################
-    # Check if at least one user is in a specific state
-    ################################################################################################
-    def anyUserReady(self):
-        for status in self.memberStatus.values():
-            if status == self.textReadyStatus:
-                return True
-
-        # Nobody found in this state
-        return False
-
-    def anyUserApproved(self):
-        for status in self.memberStatus.values():
-            if status == self.textApprovedStatus:
-                return True
-
-        # Nobody found in this state
-        return False
-
 ################################################################################################
-# Class to handle network protocol to backend
-################################################################################################
-class BackendManager:
-    # Port and host to connect to as a backend
-    PORT = 9995
-    HOST = '127.0.0.1'
 
-    # Markers
-    CMD_MARKER = ':'
-    USR_MARKER = '#'
-    DATA_MARKER = '|'
-    END_MARKER = '$'
-    
-    ################################################################################################
-    # Connect to backend
-    ################################################################################################
-    @staticmethod
-    def connect():
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((BackendManager.HOST, BackendManager.PORT))
-        return s
+g_groups = {}
 
-    ################################################################################################
-    # Send request
-    ################################################################################################
-    @staticmethod
-    def sendMessage(sock, msg):
-        totalsent = 0
-        while totalsent < len(msg):
-            sent = sock.send(msg[totalsent:])
-            if sent == 0:
-                raise RuntimeError("socket connection broken")
-            totalsent = totalsent + sent
+def setGroup(group):
+    global g_groups
+    g_groups.clear()  # As the backend is only supporting 1 group at a time, we'll clear all the rest to be consistent
+    g_groups[group.name] = group    
 
-    ################################################################################################
-    # Get response, delimited by 
-    ################################################################################################
-    @staticmethod
-    def getResponse(sock):
-        # Get answer, delimited
-        chunkSize = 4096
-        msg = ''
-        while not BackendManager.END_MARKER in msg:
-            chunk = sock.recv(chunkSize)
-            if chunk == '':
-                raise RuntimeError("socket connection broken")
-            msg = msg + chunk
-        return msg
-
-    ################################################################################################
-    # Message to generate a new group
-    ################################################################################################
-    @staticmethod
-    def createGroup():
-        # Connect to backend
-        sock = BackendManager.connect()
-
-        # Generate and send message
-        msg = 'new' + BackendManager.CMD_MARKER + BackendManager.END_MARKER
-        BackendManager.sendMessage(sock, msg)
-
-        sock.close()
-
-    ################################################################################################
-    # Message to destroy a group
-    ################################################################################################
-    @staticmethod
-    def removeGroup():
-        # Connect to backend
-        sock = BackendManager.connect()
-
-        # Generate message
-        msg = 'remove' + BackendManager.CMD_MARKER + BackendManager.END_MARKER
-        BackendManager.sendMessage(sock, msg)
-
-        sock.close()
-
-    ################################################################################################
-    # Message to store group info
-    ################################################################################################
-    @staticmethod
-    def storeGroupStatus(groupName, userData):
-        # Connect to backend
-        sock = BackendManager.connect()
-
-        # Generate message
-        msg = 'store' + BackendManager.CMD_MARKER + groupName + BackendManager.CMD_MARKER
-        for user, state in userData:
-            msg += user + BackendManager.DATA_MARKER + state + BackendManager.USR_MARKER
-        msg += BackendManager.END_MARKER
-
-        # Send msg
-        BackendManager.sendMessage(sock, msg)
-
-        sock.close()
-
-    ################################################################################################
-    # Socket handling
-    ################################################################################################
-    @staticmethod
-    def getGroupStatus():        
-        # Connect to backend
-        sock = BackendManager.connect()
-
-        # Generate message
-        msg = 'restore' + BackendManager.CMD_MARKER + BackendManager.END_MARKER
-        BackendManager.sendMessage(sock, msg)
-        response = BackendManager.getResponse(sock)
-        sock.close()
-
-        # Parse and load data
-        return BackendManager.parseRestoreMsg(msg)
-
-    ################################################################################################
-    # Parsing a restore message
-    ################################################################################################
-    @staticmethod
-    def parseRestoreMsg(msg):
-        # Get group name
-        parts = msg.split(BackendManager.CMD_MARKER)
-        if len(parts) < 2:
-            # Nothing to restore
-            return None
-
-        # Get groupname
-        groupName = parts[0]
-
-        # Get user section, count users, and create group data structure
-        userData = parts[1].split(BackendManager.USR_MARKER)
-        numUsers = len(userData)-1
-        group = PhotoGroup(groupName, numUsers, 0)
-
-        # Get info for each user
-        for user in userData:
-            splitData = user.split(BackendManager.DATA_MARKER)
-            if len(splitData) == 1:
-                continue
-
-            # Update group members with stored status
-            userName = splitData[0]
-            userStatus = splitData[1]
-            group.setStatus(userName, userStatus)
-
-        return group
+def getGroup(groupName):
+    global g_groups
+    if groupName in g_groups.keys():
+        return g_groups[groupName]
+    else:
+        return None
   
 ################################################################################################
 # Login functionality
@@ -409,11 +128,11 @@ def login():
         # Create group if leader
         if request.form['loginType'] == 'Create':
             # Create object to store group information (request.form['timeout'])
-            global groups
-            groups[request.form['groupName']] = PhotoGroup(request.form['groupName'], request.form['groupSize'], 0)
+            group = PhotoGroup(request.form['groupName'], request.form['groupSize'], 0)
+            setGroup(group)
 
             # Create folder for grup images
-            groupPath = groups[request.form['groupName']].getGroupFSPath()
+            groupPath = group.getGroupFSPath()
             if not os.path.exists(groupPath): 
                 os.makedirs(groupPath)
             cleanAllFiles(groupPath)
@@ -421,15 +140,15 @@ def login():
             # Notify backend
             BackendManager.createGroup()
 
-        # Before joining, check group exists and they aren't approving
-        if (request.form['groupName'] not in groups.keys()):
+        # Before joining, check group exists
+        groupName = request.form['groupName']
+        group = getGroup(groupName)
+        if (group is None):
             return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
         else:
             # Setup session, joining group
             userName = request.form['userName']
-            session['username'] = userName
-            groupName = request.form['groupName']
-            group = groups[groupName]
+            session['username'] = userName            
             
             # Depending on status from current Group, redirect to page that the user was before
             if group.isUserSubmitted(userName):
@@ -460,8 +179,13 @@ def upload(groupName=None):
             else:
                 userName = request.form['username']
 
+            # Group check
+            group = getGroup(groupName)
+            if (group is None):
+                return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
             # Remove any previous user images
-            groupPath = groups[groupName].getGroupFSPath()
+            groupPath = group.getGroupFSPath()
             cleanFiles(os.path.join(groupPath, userName))
 
             # Store new image for this user
@@ -469,10 +193,10 @@ def upload(groupName=None):
             file.save(os.path.join(groupPath, filename))
 
             # Update user status
-            groups[groupName].setStatusSubmitted(userName)
+            group.setStatusSubmitted(userName)
 
             # Check if we're ready for montage
-            if groups[groupName].checkAllSubmitted():
+            if group.checkAllSubmitted():
                 return redirect(url_for('createMontage', groupName=groupName))
             else:
                 return redirect(url_for('waitForMontage', groupName=groupName))
@@ -489,11 +213,16 @@ def upload(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/waitForMontage')
 def waitForMontage(groupName=None):
-    if groups[groupName].checkAllSubmitted() or groups[groupName].anyUserApproved():
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+    if group.checkAllSubmitted() or group.anyUserApproved():
         # If everybody just submitted a picture, or at least one already approved (is moving faster), go to approval page
         return redirect(url_for('approval', groupName=groupName))
     else:
-        return render_template('waitForMontage.html', name=groupName, memberStatus=groups[groupName].memberStatus)
+        return render_template('waitForMontage.html', name=groupName, memberStatus=group.getUsersStatus())
 
 ################################################################################################
 # Create the montage
@@ -503,12 +232,17 @@ def createMontage(groupName=None):
     # System call to imagemagick program "montage"
     montageCmd = 'montage '
 
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
     # List all images in group file folder
-    groupPath = groups[groupName].getGroupFSPath()
+    groupPath = group.getGroupFSPath()
     listing = os.listdir(groupPath)
 
     # Put all valid image filenames in a parameters string
-    users = groups[groupName].memberStatus.keys()
+    users = group.getUsers()
     memberImages = ''
     for imageFile in listing:
         # Check that is is a valid user image
@@ -527,44 +261,49 @@ def createMontage(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/approval', methods=['GET', 'POST'])
 def approval(groupName=None):
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
     if request.method == 'GET':
-        if groups[groupName].checkAllReady():
+        if group.checkAllReady():
             # Someone aborted; we all go back to uploading...
-            groups[groupName].setStatusSubmitted(session['username'])
+            group.setStatusSubmitted(session['username'])
             return redirect(url_for('upload', groupName=groupName))    
-        elif groups[groupName].anyUserReady():
+        elif group.anyUserReady():
             # Check if someone went back to change their pictures. If so, lets go wait for the new montage
-            groups[groupName].setStatusSubmitted(session['username'])
+            group.setStatusSubmitted(session['username'])
             return redirect(url_for('waitForMontage', groupName=groupName))
         else:
             # Show montage for user to approve
-            montagePath = groups[groupName].generateMontagePath()
+            montagePath = group.generateMontagePath()
             return render_template('coordinate.html', name=groupName, montagePath=montagePath)
     elif request.method == 'POST':
         # Handle user approval
         if request.form['submitBtn'] == 'Approve':
-            groups[groupName].setStatusApproved(session['username']) 
+            group.setStatusApproved(session['username']) 
 
             # Save state to backend
-            BackendManager.storeGroupStatus(groupName, groups[groupName].memberStatus.items())
+            BackendManager.storeGroupStatus(groupName, group.getUsersStatus())
 
             # Go to waiting page if required (or it will make us jump straight to commited state)
             return redirect(url_for('waitForApproval', groupName=groupName))
         elif request.form['submitBtn'] == 'Reject':
             # Go to upload page, and send everybody else there too
-            groups[groupName].setAllReady()
+            group.setAllReady()
 
             # Save state to backend
-            BackendManager.storeGroupStatus(groupName, groups[groupName].memberStatus.items())
+            BackendManager.storeGroupStatus(groupName, group.getUsersStatus())
 
             return redirect(url_for('upload', groupName=groupName))         
         else:   # Upload new Image
             # We have to mark everybody as "submitted", aborting transaction, and this user as "ready" to add an image
-            groups[groupName].setAllSubmitted()
-            groups[groupName].setStatusReady(session['username'])
+            group.setAllSubmitted()
+            group.setStatusReady(session['username'])
 
             # Save state to backend
-            BackendManager.storeGroupStatus(groupName, groups[groupName].memberStatus.items())
+            BackendManager.storeGroupStatus(groupName, group.getUsersStatus())
 
             return redirect(url_for('upload', groupName=groupName))            
 
@@ -573,43 +312,58 @@ def approval(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/waitForApproval')
 def waitForApproval(groupName=None):
-    if groups[groupName].checkAllApprovedOrDone():
-        # All have approved! Set this user as done (all have approved and he will know about it now)
-        groups[groupName].setStatusDone(session['username'])
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
-        if groups[groupName].checkAllDone():
+    if group.checkAllApprovedOrDone():
+        # All have approved! Set this user as done (all have approved and he will know about it now)
+        group.setStatusDone(session['username'])
+
+        if group.checkAllDone():
             # If we are the last one asking for the montage status, remove session
             BackendManager.removeGroup()
 
         # Show the montage to the user
         return redirect(url_for('commitMontage', groupName=groupName))
-    elif groups[groupName].checkAllReady():
+    elif group.checkAllReady():
         # Someone aborted; we all go back to uploading...
-        groups[groupName].setStatusSubmitted(session['username'])
+        group.setStatusSubmitted(session['username'])
         return redirect(url_for('upload', groupName=groupName))    
-    elif groups[groupName].anyUserReady():
+    elif group.anyUserReady():
         # Someone aborted to change their image; let's go back to the "waiting for montage" page
-        groups[groupName].setStatusSubmitted(session['username'])
+        group.setStatusSubmitted(session['username'])
         return redirect(url_for('waitForMontage', groupName=groupName))
     else:
         # Nothing new that is useful; still waiting for approvals or one abort
-        return render_template('waitForApproval.html', name=groupName, memberStatus=groups[groupName].memberStatus)
+        return render_template('waitForApproval.html', name=groupName, memberStatus=group.getUsersStatus())
 
 ################################################################################################
 # Montage done!
 ################################################################################################
 @app.route('/groups/<groupName>/done')
 def commitMontage(groupName=None):
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
     # Show montage, final version
-    montagePath = generateMontagePath(groupName)
+    montagePath = group.generateMontagePath()
     return render_template('done.html', name=groupName, montagePath=montagePath)
 
 ################################################################################################
 # Show image function
 ################################################################################################
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    groupPath = groups[groupName].getGroupFSPath()
+@app.route('/uploads/<groupName>/<filename>')
+def uploaded_file(filename, groupName=None):
+    # Group check
+    group = getGroup(groupName)
+    if (group is None):
+        return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+    groupPath = group.getGroupFSPath()
     return send_from_directory(groupPath, filename)
 
 ################################################################################################
@@ -629,7 +383,7 @@ def errorPage(errorMsg=None):
 def restoreStatus():
     group = BackendManager.getGroupStatus()
     if group is not None:
-        groups[group.name] = group
+        setGroup(group)
 
 ################################################################################################
 # Entry point to the app
