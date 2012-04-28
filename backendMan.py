@@ -119,7 +119,7 @@ class BackendManager:
         sock.close()
 
         # Parse and load data
-        return BackendManager.parseRestoreMsg(msg)
+        return BackendManager.parseRestoreMsg(response)
 
     ################################################################################################
     # Parsing a restore message. Returns a PhotoGroup

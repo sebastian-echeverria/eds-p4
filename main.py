@@ -4,14 +4,17 @@
 # Sebastian Echeverria
 #
 # TODO
-#  - Use AJAX
-#  - Fix Reject (post change pic) bug with 3 devices (one Android)
-#  - Improve how to get to a group directly through a link
+#  - Fix restore bug
 #  - Manage case where new users add themselves to exiting restored transaction
-#  - Manage timeout in separate thread (where? how?)
 #  - Check for weird inputs (including invalid chars: :, # and |
-#  - Check for weird or quick state changes
 #  - Improve visuals
+#
+# NOT DO
+#  - Use AJAX > too complicated
+#  - Manage timeout in separate thread (where? how?) > groupsize instead of first timeout
+#  - Manage timeout in separate thread (where? how?) > no timeout for votes, wait forever
+#  - Improve how to get to a group directly through a link > good enough, go to main an input group name (plus username)
+#  - Check for weird or quick state changes > too complicated
 #
 # DONE
 #  - Obtain montage library
@@ -29,6 +32,8 @@
 #  - Step 2: receive recovery info
 #  - Step 2: use recovery info
 #  - Remove hardcoded filesystem folder; obtain it relative somehow
+#  - Fix Reject (post change pic) bug with 3 devices (one Android)
+#  - Check for missing inputs
 ################################################################################################
 
 ################################################################################################
@@ -101,7 +106,6 @@ def cleanFiles(filePathWithoutExt):
 ################################################################################################
 # Global variable to store the existing groups' information
 ################################################################################################
-
 g_groups = {}
 
 def setGroup(group):
@@ -125,10 +129,25 @@ def login():
     session.pop('username', None)
 
     if request.method == 'POST':
+        # Validate input
+        if (request.form['groupName'] == ''):
+            return redirect(url_for('errorPage', errorMsg="groupNotSelected"))
+        if (request.form['userName'] == ''):
+            return redirect(url_for('errorPage', errorMsg="userNotSelected"))
+
         # Create group if leader
         if request.form['loginType'] == 'Create':
-            # Create object to store group information (request.form['timeout'])
-            group = PhotoGroup(request.form['groupName'], request.form['groupSize'], 0)
+            if (request.form['groupSize'] == ''):
+                return redirect(url_for('errorPage', errorMsg="sizeNotSelected"))
+
+            # Trim and get group size
+            try:
+                groupSize = str(int(request.form['groupSize']))
+            except:
+                return redirect(url_for('errorPage', errorMsg="groupSizeNotValid"))
+
+            # Create object to store group information
+            group = PhotoGroup(request.form['groupName'], groupSize, 0)
             setGroup(group)
 
             # Create folder for grup images
@@ -269,7 +288,6 @@ def approval(groupName=None):
     if request.method == 'GET':
         if group.checkAllReady():
             # Someone aborted; we all go back to uploading...
-            group.setStatusSubmitted(session['username'])
             return redirect(url_for('upload', groupName=groupName))    
         elif group.anyUserReady():
             # Check if someone went back to change their pictures. If so, lets go wait for the new montage
@@ -329,7 +347,6 @@ def waitForApproval(groupName=None):
         return redirect(url_for('commitMontage', groupName=groupName))
     elif group.checkAllReady():
         # Someone aborted; we all go back to uploading...
-        group.setStatusSubmitted(session['username'])
         return redirect(url_for('upload', groupName=groupName))    
     elif group.anyUserReady():
         # Someone aborted to change their image; let's go back to the "waiting for montage" page
@@ -371,11 +388,22 @@ def uploaded_file(filename, groupName=None):
 ################################################################################################
 @app.route('/error/<errorMsg>')
 def errorPage(errorMsg=None):
+    errorMsgString = 'Unknown error'
+
     if(errorMsg == 'nonExistentGroup'):
         errorMsgString = 'Group does not exist'
     elif(errorMsg == 'invalidFile'):
         errorMsgString = 'Invalid image to upload'
-    return render_template('error.html', errorMsg=errorMsgString)
+    elif(errorMsg == 'groupNotSelected'):
+        errorMsgString = 'Please indicate a group name'
+    elif(errorMsg == 'userNotSelected'):
+        errorMsgString = 'Please indicate a user name'
+    elif(errorMsg == 'sizeNotSelected'):
+        errorMsgString = 'Please indicate a group size'
+    elif(errorMsg == 'groupSizeNotValid'):
+        errorMsgString = 'Please indicate a valid group size'
+    
+    return render_template('error.html', errorMsgString=errorMsgString)
 
 ################################################################################################
 # Restores a group
