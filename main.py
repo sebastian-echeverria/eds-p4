@@ -48,6 +48,13 @@ app = Flask(__name__)
 app.secret_key = 'A0Zr98j/3yX R~XHH!aijdhwwi3kjha2384/,?RT'
 
 ################################################################################################
+# Internal logger
+################################################################################################
+def log(msg):
+    log = logging.getLogger('werkzeug')
+    log.warning(msg)
+
+################################################################################################
 # File-related utility functions
 ################################################################################################
 
@@ -202,14 +209,13 @@ class PhotoGroup:
             return False
 
     def checkAll(self, expectedStatus):
-        log = logging.getLogger('werkzeug')
-        log.warning('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
+        #log('Sizes ' + str(len(self.memberStatus.keys())) + ' ' + str(self.size))
 
         if(len(self.memberStatus.keys()) == self.size):
             # Check if everybody has submitted
             for key, status in self.memberStatus.items():
                 if status != expectedStatus:
-                    log.warning(key + " " + status)
+                    #log(key + " " + status)
                     return False
 
             # If everybody submitted, we are ok
@@ -438,16 +444,22 @@ def upload(groupName=None):
         # Someone just uploaded a file
         file = request.files['newPhoto']
         if file and allowed_file(file.filename):
+            # Get the username from the session, or if we came from out of it, from the form
+            if 'username' in session.keys():
+                userName = session['username']
+            else:
+                userName = request.form['username']
+
             # Remove any previous user images
             groupPath = groups[groupName].getGroupFSPath()
-            cleanFiles(os.path.join(groupPath, session['username']))
+            cleanFiles(os.path.join(groupPath, userName))
 
             # Store new image for this user
-            filename = session['username'] + '.' + getExt(file.filename)
+            filename = userName + '.' + getExt(file.filename)
             file.save(os.path.join(groupPath, filename))
 
             # Update user status
-            groups[groupName].setStatusSubmitted(session['username'])
+            groups[groupName].setStatusSubmitted(userName)
 
             # Check if we're ready for montage
             if groups[groupName].checkAllSubmitted():
@@ -460,7 +472,7 @@ def upload(groupName=None):
     else:
         # We want to upload a new file
         groupURL = request.base_url.replace('http', 'picshare')
-        return render_template('upload.html', name=groupName, groupURL=groupURL)
+        return render_template('upload.html', name=groupName, groupURL=groupURL, username=session['username'])
 
 ################################################################################################
 # Waiting for other submissions   

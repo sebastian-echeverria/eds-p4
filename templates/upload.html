@@ -10,8 +10,9 @@
 	        Select photo to submit: <input type="file" name="newPhoto"/>
 	        <br/>
 	        <input type="submit" value="Upload" />
+            <input type="hidden" name="username" value="{{username}}" />
         </form>
         <br/>
-        To upload from Android, <a href="{{ groupURL }}">click here.</a>
+        To upload from Android, <a href="{{ groupURL }}?user={{username}}">click here.</a>
     {% endif %}
 {% endblock %}
