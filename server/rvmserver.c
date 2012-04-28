@@ -195,6 +195,12 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     //printf("Received: %s.\n", record);
     if(strncmp(record, "new", strlen("new")) == 0)
     {
+        // First remove previous one, if there was one; then create a new one
+        if(removeGroupSession())
+        {
+            printf("Removed old session\n");
+        }
+
         printf("Starting new session\n");
         newGroupSession();
 
