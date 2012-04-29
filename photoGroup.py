@@ -28,8 +28,12 @@ class PhotoGroup:
     def __init__(self, groupName, size, timeout):
         self.name = groupName
         self.size = int(size)
-        self.timeout = timeout
+        self.timeout = 30
         self.memberStatus = {}
+
+    ################################################################################################
+    # Getters and checkers, and timer
+    ################################################################################################
 
     def getUsers(self):
         return self.memberStatus.keys()
@@ -45,6 +49,16 @@ class PhotoGroup:
 
     def isInGroup(self, userName):
         return userName in self.memberStatus.keys()
+
+    def startTimer(self):
+        self.finish = time.time() + self.timeout
+        self.timeractive = True
+
+    def isTimeUp(self):
+        return self.timeractive and (time.time() > self.finish)
+
+    def stopTimer(self):
+        self.timeractive = False
 
     ################################################################################################
     # Function to get the full path where group images are stored, and relative for montage

@@ -4,8 +4,9 @@
 # Sebastian Echeverria
 #
 # TODO
-#  - Check for weird inputs (including invalid chars: :, # and |
-#  - Improve visuals
+#  - Improve visuals (CSS)
+#  - Improve montage
+#  - Add timeout for votes
 #
 # NOT DO
 #  - Use AJAX > too complicated
@@ -13,6 +14,7 @@
 #  - Manage timeout in separate thread (where? how?) > no timeout for votes, wait forever
 #  - Improve how to get to a group directly through a link > good enough, go to main an input group name (plus username)
 #  - Check for weird or quick state changes > too complicated
+#  - Check for weird inputs (including invalid chars: :, # and | > not worth it
 #
 # DONE
 #  - Obtain montage library
@@ -30,7 +32,7 @@
 #  - Step 2: receive recovery info
 #  - Step 2: use recovery info
 #  - Remove hardcoded filesystem folder; obtain it relative somehow
-#  - Fix Reject (post change pic) bug with 3 devices (one Android)
+#  - Fix Reject (post change pic) bug fRwith 3 devices (one Android)
 #  - Check for missing inputs
 #  - Fix restore bug
 #  - Manage case where new users add themselves to exiting restored transaction
@@ -220,6 +222,7 @@ def upload(groupName=None):
 
             # Check if we're ready for montage
             if group.checkAllSubmitted():
+                group.startTimer()
                 return redirect(url_for('createMontage', groupName=groupName))
             else:
                 return redirect(url_for('waitForMontage', groupName=groupName))
@@ -301,6 +304,12 @@ def approval(groupName=None):
     if(not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
+    if group.isTimeUp():
+        group.stopTimer()
+        group.setAllReady()
+        BackendManager.storeGroupStatus(groupName, group.getUsersStatus()) 
+        return redirect(url_for('upload', groupName=groupName))            
+
     if request.method == 'GET':
         if group.checkAllReady():
             # Someone aborted; we all go back to uploading...
@@ -324,15 +333,14 @@ def approval(groupName=None):
             # Go to waiting page if required (or it will make us jump straight to commited state)
             return redirect(url_for('waitForApproval', groupName=groupName))
         elif request.form['submitBtn'] == 'Reject':
-            # Go to upload page, and send everybody else there too
+            # Move everybody back to the "ready to upload" phase
             group.setAllReady()
 
             # Save state to backend
-            BackendManager.storeGroupStatus(groupName, group.getUsersStatus())
-
+            BackendManager.storeGroupStatus(groupName, group.getUsersStatus()) 
             return redirect(url_for('upload', groupName=groupName))         
         else:   # Upload new Image
-            # We have to mark everybody as "submitted", aborting transaction, and this user as "ready" to add an image
+            # We send everybody to "waiting for other pictures" except for the current one, which goes to "ready to upload"
             group.setAllSubmitted()
             group.setStatusReady(session['username'])
 
@@ -354,6 +362,12 @@ def waitForApproval(groupName=None):
     # User check
     if(not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
+
+    if group.isTimeUp():
+        group.stopTimer()
+        group.setAllReady()
+        BackendManager.storeGroupStatus(groupName, group.getUsersStatus()) 
+        return redirect(url_for('upload', groupName=groupName))            
 
     if group.checkAllApprovedOrDone():
         # All have approved! Set this user as done (all have approved and he will know about it now)
