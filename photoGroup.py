@@ -37,6 +37,15 @@ class PhotoGroup:
     def getUsersStatus(self):
         return self.memberStatus.items()
 
+    def isSpaceAvailable(self):
+        if(len(self.memberStatus) < self.size):
+            return True
+        else:
+            return False
+
+    def isInGroup(self, userName):
+        return userName in self.memberStatus.keys()
+
     ################################################################################################
     # Function to get the full path where group images are stored, and relative for montage
     ################################################################################################

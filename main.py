@@ -4,8 +4,6 @@
 # Sebastian Echeverria
 #
 # TODO
-#  - Fix restore bug
-#  - Manage case where new users add themselves to exiting restored transaction
 #  - Check for weird inputs (including invalid chars: :, # and |
 #  - Improve visuals
 #
@@ -34,6 +32,8 @@
 #  - Remove hardcoded filesystem folder; obtain it relative somehow
 #  - Fix Reject (post change pic) bug with 3 devices (one Android)
 #  - Check for missing inputs
+#  - Fix restore bug
+#  - Manage case where new users add themselves to exiting restored transaction
 ################################################################################################
 
 ################################################################################################
@@ -164,22 +164,26 @@ def login():
         group = getGroup(groupName)
         if (group is None):
             return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+        # Now check if there are spaces available
+        if(not group.isInGroup(request.form['userName'])) and (not group.isSpaceAvailable()):
+            return redirect(url_for('errorPage', errorMsg="maxUsersReached"))
+
+        # Setup session, joining group
+        userName = request.form['userName']
+        session['username'] = userName            
+        
+        # Depending on status from current Group, redirect to page that the user was before
+        if group.isUserSubmitted(userName):
+            return redirect(url_for('waitForMontage', groupName=groupName))
+        elif group.isUserApproved(userName):
+            return redirect(url_for('waitForApproval', groupName=groupName))
+        elif group.isUserDone(userName):
+            return redirect(url_for('commitMontage', groupName=groupName))
         else:
-            # Setup session, joining group
-            userName = request.form['userName']
-            session['username'] = userName            
-            
-            # Depending on status from current Group, redirect to page that the user was before
-            if group.isUserSubmitted(userName):
-                return redirect(url_for('waitForMontage', groupName=groupName))
-            elif group.isUserApproved(userName):
-                return redirect(url_for('waitForApproval', groupName=groupName))
-            elif group.isUserDone(userName):
-                return redirect(url_for('commitMontage', groupName=groupName))
-            else:
-                # Join group and go to upload page
-                group.setStatusReady(userName)
-                return redirect(url_for('upload', groupName=groupName))
+            # Join group and go to upload page
+            group.setStatusReady(userName)
+            return redirect(url_for('upload', groupName=groupName))
     else:
         return render_template('login.html')
 
@@ -237,6 +241,10 @@ def waitForMontage(groupName=None):
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
+    # User check
+    if(not group.isInGroup(session['username'])):
+        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
+
     if group.checkAllSubmitted() or group.anyUserApproved():
         # If everybody just submitted a picture, or at least one already approved (is moving faster), go to approval page
         return redirect(url_for('approval', groupName=groupName))
@@ -248,13 +256,17 @@ def waitForMontage(groupName=None):
 ################################################################################################
 @app.route('/groups/<groupName>/montage')
 def createMontage(groupName=None):
-    # System call to imagemagick program "montage"
-    montageCmd = 'montage '
-
     # Group check
     group = getGroup(groupName)
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+    # User check
+    if(not group.isInGroup(session['username'])):
+        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
+
+    # System call to imagemagick program "montage"
+    montageCmd = 'montage '
 
     # List all images in group file folder
     groupPath = group.getGroupFSPath()
@@ -284,6 +296,10 @@ def approval(groupName=None):
     group = getGroup(groupName)
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+    # User check
+    if(not group.isInGroup(session['username'])):
+        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     if request.method == 'GET':
         if group.checkAllReady():
@@ -335,6 +351,10 @@ def waitForApproval(groupName=None):
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
+    # User check
+    if(not group.isInGroup(session['username'])):
+        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
+
     if group.checkAllApprovedOrDone():
         # All have approved! Set this user as done (all have approved and he will know about it now)
         group.setStatusDone(session['username'])
@@ -365,6 +385,10 @@ def commitMontage(groupName=None):
     group = getGroup(groupName)
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
+
+    # User check
+    if(not group.isInGroup(session['username'])):
+        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     # Show montage, final version
     montagePath = group.generateMontagePath()
@@ -402,6 +426,10 @@ def errorPage(errorMsg=None):
         errorMsgString = 'Please indicate a group size'
     elif(errorMsg == 'groupSizeNotValid'):
         errorMsgString = 'Please indicate a valid group size'
+    elif(errorMsg == 'maxUsersReached'):
+        errorMsgString = 'Cant join group, number of registered users has reached the maximum for the group.'
+    elif(errorMsg == 'userIsNotInGroup'):
+        errorMsgString = 'User is not (or no longer) in this group.'
     
     return render_template('error.html', errorMsgString=errorMsgString)
 
