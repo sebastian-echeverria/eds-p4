@@ -6,12 +6,10 @@
 # TODO
 #  - Improve visuals (CSS)
 #  - Improve montage
-#  - Add timeout for votes
 #
 # NOT DO
 #  - Use AJAX > too complicated
 #  - Manage timeout in separate thread (where? how?) > groupsize instead of first timeout
-#  - Manage timeout in separate thread (where? how?) > no timeout for votes, wait forever
 #  - Improve how to get to a group directly through a link > good enough, go to main an input group name (plus username)
 #  - Check for weird or quick state changes > too complicated
 #  - Check for weird inputs (including invalid chars: :, # and | > not worth it
@@ -36,6 +34,7 @@
 #  - Check for missing inputs
 #  - Fix restore bug
 #  - Manage case where new users add themselves to exiting restored transaction
+#  - Add timeout for votes
 ################################################################################################
 
 ################################################################################################
@@ -43,6 +42,7 @@
 ################################################################################################
 import os
 import logging
+import time
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session
 
 # Internal imports
@@ -252,7 +252,7 @@ def waitForMontage(groupName=None):
         # If everybody just submitted a picture, or at least one already approved (is moving faster), go to approval page
         return redirect(url_for('approval', groupName=groupName))
     else:
-        return render_template('waitForMontage.html', name=groupName, memberStatus=group.getUsersStatus())
+        return render_template('waitForMontage.html', name=groupName, memberStatus=group.getUsersStatus(), size=group.size)
 
 ################################################################################################
 # Create the montage
@@ -263,10 +263,6 @@ def createMontage(groupName=None):
     group = getGroup(groupName)
     if (group is None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
-
-    # User check
-    if(not group.isInGroup(session['username'])):
-        return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     # System call to imagemagick program "montage"
     montageCmd = 'montage '
@@ -285,8 +281,10 @@ def createMontage(groupName=None):
             memberImages += ' ' + groupPath + '/' + imageFile
 
     # Create montage
-    montageFile = '  ' + groupPath + '/'  + groupName + '.jpg'
+    montageFile = '  -background SkyBlue  ' + groupPath + '/'  + groupName + '.jpg'
+    log(montageCmd + memberImages + montageFile)
     os.system(montageCmd + memberImages + montageFile)
+    time.sleep(1)
 
     return redirect(url_for('approval', groupName=groupName))
 

@@ -30,6 +30,8 @@ class PhotoGroup:
         self.size = int(size)
         self.timeout = 30
         self.memberStatus = {}
+        self.timeractive = False
+        self.finish = 0
 
     ################################################################################################
     # Getters and checkers, and timer
@@ -55,7 +57,7 @@ class PhotoGroup:
         self.timeractive = True
 
     def isTimeUp(self):
-        return self.timeractive and (time.time() > self.finish)
+        return self.timeractive and (self.finish != 0) and (time.time() > self.finish)
 
     def stopTimer(self):
         self.timeractive = False

@@ -3,7 +3,7 @@
 {% block extras%}<meta http-equiv="refresh" content="2">{% endblock %}
 {% block subtitle %}Waiting Submissions for Group {{ name }}{% endblock %}
 {% block content %}
-        Current status: <br/>
+        Current status ({{ size }} members): <br/>
         <ul id="status">
         {% for user, status in memberStatus %}
             <li>{{ user }}: {{ status }}</li>
