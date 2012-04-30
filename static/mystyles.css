@@ -1,0 +1,32 @@
+body {
+	font-family: Helvetica, sans-serif;
+	font-size: 12px;
+	line-height: 16px;
+}
+input[type=submit],label,select,.pointer  { cursor:pointer; }
+div#container {
+ width:780px;
+ margin:0 auto;
+ border-style: solid;
+ padding-top:25px;
+ padding-bottom:25px;  
+ padding-right:10px;
+ padding-left:10px;
+ background-color:lightblue;
+ vertical-align:top;
+}
+div#title{
+ padding-top:0.2px;
+ padding-bottom:0.2px;  
+ padding-right:6px;
+ padding-left:6px;
+ margin-left:auto;
+ margin-right:auto;
+ width:98%;
+}
+.h2{
+margin-left:auto;
+margin-right:auto;
+width:70%;
+}
+

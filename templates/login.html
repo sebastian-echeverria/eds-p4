@@ -2,35 +2,40 @@
 <html lang="en">
 <head>
     <title>Login - Group Photo Service</title>
+    <link rel="stylesheet" type="text/css" href="/static/mystyles.css" media="screen" />
 </head>
 <body>
-    <h2>Login</h2>
-    <table>
-        <tr>
-            <td valign="top">
-                <h3>Create New Group</h3>
-                <form action="." method="POST">
-                    <table>
-                        <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
-                        <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
-                        <tr><td>Group Size: </td><td><input type="text" name="groupSize" /></td></tr>
-                        <!--<tr><td>Max Time to Agree: </td><td><input type="text"  name="timeout" /></td></tr>-->
-                        <tr><td align="center" colspan="2"><input type="submit" value="Create" name="loginType"/></td></tr>
-                    </table>
-                </form>
-            </td>
-            <td valign="top">
-                <h3>Join Existing Group</h3>
-                <form action="." method="POST">
-                    <table>
-                        <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
-                        <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
-                        <tr><td align="center" colspan="2"><input type="submit" value="Join" name="loginType"/></td></tr>
-                    </table>
-                </form>
+    <div id="container">
+        <table align="center" width="100%">
+            <tr><td colspan="2" align="center"><div id="title"><h2>Login</h2></div></td><tr>
+            <tr><td colspan="2"><hr/></td></tr>
+            <tr>
+                <td valign="top">
+                    <h3>Create New Group</h3>
+                    <form action="." method="POST">
+                        <table>
+                            <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
+                            <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
+                            <tr><td>Group Size: </td><td><input type="text" name="groupSize" /></td></tr>
+                            <!--<tr><td>Max Time to Agree: </td><td><input type="text"  name="timeout" /></td></tr>-->
+                            <tr><td align="center" colspan="2"><input type="submit" value="Create" name="loginType"/></td></tr>
+                        </table>
+                    </form>
+                </td>
+                <td valign="top">
+                    <h3>Join Existing Group</h3>
+                    <form action="." method="POST">
+                        <table>
+                            <tr><td>Your Username: </td><td><input type="text" name="userName" /></td></tr>
+                            <tr><td>Group Name: </td><td><input type="text" name="groupName" /></td></tr>
+                            <tr><td colspan="2">&nbsp;</td></tr>
+                            <tr><td align="center" colspan="2"><input type="submit" value="Join" name="loginType"/></td></tr>
+                        </table>
+                    </form>
 
-            </td>
-        </tr>
-    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
 </body>
 </html>

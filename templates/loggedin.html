@@ -2,18 +2,24 @@
 <html lang="en">
 <head>
     <title>{% block title %}{% endblock %} - Group Photo Service</title>
+    <link rel="stylesheet" type="text/css" href="/static/mystyles.css" media="screen" />
     {% block extras %}{% endblock %}
 </head>
 <body {% block bodyJS %}{% endblock %}>
-    {% if session['username'] %}
-        <h2>{% block subtitle %}{% endblock %}</h2>
-        <div id="content">{% block content %}{% endblock %}</div>
-        <div id="footer">
-            <br/><br/>Logged in as: {{ session['username'] }}
-            <br><a href="/">Logout</a></form>
-        </div>
-    {% else %}
-        Please login: <a href="/">here</a>.
-    {% endif %}
+    <div id="container">
+        <table align="center" width="100%">
+        {% if session['username'] %}
+            <tr><td align="center"><div id="title"><h2>{% block subtitle %}{% endblock %}</h2></div></td></tr>
+            <tr><td colspan="2"><hr/></td></tr>
+            <tr><td align="center"><div id="content">{% block content %}{% endblock %}</div></td></tr>
+            <tr><td><div id="footer">
+                <br/><hr/><br/>Logged in as: {{ session['username'] }}
+                <br><a href="/">Logout</a></form>
+            </div></td></tr>
+        {% else %}
+            <tr><td>Please login: <a href="/">here</a>.</tr></td>
+        {% endif %}
+        </table>
+    </div>
 </body>
 </html>

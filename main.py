@@ -5,7 +5,6 @@
 #
 # TODO
 #  - Improve visuals (CSS)
-#  - Improve montage
 #
 # NOT DO
 #  - Use AJAX > too complicated
@@ -35,6 +34,7 @@
 #  - Fix restore bug
 #  - Manage case where new users add themselves to exiting restored transaction
 #  - Add timeout for votes
+#  - Improve montage
 ################################################################################################
 
 ################################################################################################
@@ -132,10 +132,10 @@ def login():
 
     if request.method == 'POST':
         # Validate input
-        if (request.form['groupName'] == ''):
-            return redirect(url_for('errorPage', errorMsg="groupNotSelected"))
         if (request.form['userName'] == ''):
             return redirect(url_for('errorPage', errorMsg="userNotSelected"))
+        if (request.form['groupName'] == ''):
+            return redirect(url_for('errorPage', errorMsg="groupNotSelected"))
 
         # Create group if leader
         if request.form['loginType'] == 'Create':
@@ -245,7 +245,7 @@ def waitForMontage(groupName=None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
     # User check
-    if(not group.isInGroup(session['username'])):
+    if(not session['username'] or not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     if group.checkAllSubmitted() or group.anyUserApproved():
@@ -299,7 +299,7 @@ def approval(groupName=None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
     # User check
-    if(not group.isInGroup(session['username'])):
+    if(not session['username'] or not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     if group.isTimeUp():
@@ -358,7 +358,7 @@ def waitForApproval(groupName=None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
     # User check
-    if(not group.isInGroup(session['username'])):
+    if(not session['username'] or not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     if group.isTimeUp():
@@ -399,7 +399,7 @@ def commitMontage(groupName=None):
         return redirect(url_for('errorPage', errorMsg="nonExistentGroup"))
 
     # User check
-    if(not group.isInGroup(session['username'])):
+    if(not session['username'] or not group.isInGroup(session['username'])):
         return redirect(url_for('errorPage', errorMsg="userIsNotInGroup"))
 
     # Show montage, final version

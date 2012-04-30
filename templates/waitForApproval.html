@@ -4,9 +4,9 @@
 {% block subtitle %}Waiting Approval for Group {{ name }}{% endblock %}
 {% block content %}
         Current status: <br/>
-        <ul id="status">
+        <ol id="status">
         {% for user, status in memberStatus %}
             <li>{{ user }}: {{ status }}</li>
         {% endfor %}
-        </ul>
+        </ol>
 {% endblock %}

@@ -4,9 +4,9 @@
 {% block subtitle %}Waiting Submissions for Group {{ name }}{% endblock %}
 {% block content %}
         Current status ({{ size }} members): <br/>
-        <ul id="status">
+        <ol id="status">
         {% for user, status in memberStatus %}
             <li>{{ user }}: {{ status }}</li>
         {% endfor %}
-        </ul>
+        </ol>
 {% endblock %}
