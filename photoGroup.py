@@ -28,7 +28,7 @@ class PhotoGroup:
     def __init__(self, groupName, size, timeout):
         self.name = groupName
         self.size = int(size)
-        self.timeout = 30
+        self.timeout = 300
         self.memberStatus = {}
         self.timeractive = False
         self.finish = 0
