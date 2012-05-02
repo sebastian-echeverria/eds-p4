@@ -80,7 +80,7 @@ def getExt(filename):
     if '.' not in filename:
         return ''
     else:
-        return filename.rsplit('.', 1)[1]
+        return filename.rsplit('.', 1)[1].lower()
 
 # Removes all files in the given folder
 def cleanAllFiles(folderPath):
